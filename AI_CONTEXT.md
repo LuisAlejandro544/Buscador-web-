@@ -71,8 +71,9 @@ Este archivo proporciona el contexto fundamental del proyecto para cualquier mod
    - **Persistencia en Room v3:** Almacenado con `isProtected = true` y `contextId` persistido para reconexión de sesión durante la navegación.
    - **Diseño UI:** Distintivo en color esmeralda (`#00897B`), icono de escudo (`Icons.Default.Shield`), pestaña dedicada en `TabsScreen` y página de inicio `BrowserStartPage` adaptada.
 
-6. **Integración Continua y Firma Automática en GitHub Actions:**
-   - **Workflow (`.github/workflows/build-debug.yml`):** Compilación limpia sin caché (`cache-disabled: true`, `--no-build-cache`), descarga de NDK 28, CMake 3.31+, Rust 2024 y GeckoView Omni de Mozilla.
-   - **Script de Firma (`generate_debug_keystore.sh`):** Fuerza la generación no interactiva de un archivo `debug.keystore` (PKCS12, RSA 2048 bits) desde cero en el entorno de CI para firmar el APK de depuración sin requerir interacción ni secretos preexistentes.
-   - **Artefacto:** Genera y publica `app-debug.apk` como artefacto descargable de 30 días de retención.
+6. **Integración Continua, Firma Automática y Entrega P2P en GitHub Actions:**
+   - **Workflow (`.github/workflows/build-debug.yml`):** Activación exclusivamente manual (`workflow_dispatch`), compilación limpia sin caché (`cache-disabled: true`, `--no-build-cache`), instalación de NDK 28 (`28.2.13676358`), CMake 3.31.6, Rust 2024 y descarga de GeckoView Omni de Mozilla.
+   - **Script de Firma (`generate_debug_keystore.sh`):** Fuerza la generación no interactiva de un archivo `debug.keystore` (PKCS12, RSA 2048 bits) desde cero en el runner de CI para firmar el APK sin requerir interacción ni secretos preexistentes.
+   - **Transferencia Directa P2P al Móvil:** Conexión segura a la VPN privada mediante `tailscale/github-action@v3` y envío desatendido por `scp`/`sshpass` directamente al almacenamiento interno del teléfono (`/storage/emulated/0/Navegador/app-debug.apk`) a través de la app SFTP configurada en el dispositivo.
+   - **Secretos de Actions Requeridos:** `TAILSCALE_AUTHKEY`, `PHONE_IP`, `SSH_USER` (por defecto `github`), `SSH_PASSWORD` y `SSH_PORT` (por defecto `2222`). Como respaldo ante desconexión del móvil, se preserva el artefacto descargable en GitHub.
 

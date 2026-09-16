@@ -4,17 +4,14 @@ name: Build Debug APK
 # Flujo de Integración Continua (CI) en GitHub Actions
 # Propósito: Compilar el APK de depuración (Debug) desde cero, sin caché,
 #            descargando dependencias de C++ (NDK 28 / CMake 3.31), Rust 2024
-#            y GeckoView Omni de Mozilla, y generando una firma debug.keystore
-#            completamente nueva en cada ejecución.
+#            y GeckoView Omni de Mozilla, generando firma debug.keystore limpia
+#            y transfiriendo el APK compilado directamente al teléfono móvil
+#            (carpeta /storage/emulated/0/Navegador) a través de Tailscale + SFTP.
 # ==============================================================================
 
 on:
-  push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
   workflow_dispatch:
-    # Permite ejecutar manualmente la compilación desde la interfaz móvil de GitHub
+    # Activación exclusivamente MANUAL desde la interfaz de GitHub en el móvil
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -22,7 +19,7 @@ concurrency:
 
 jobs:
   build-debug-apk:
-    name: Compilar APK Debug (Sin Caché)
+    name: Compilar APK Debug y Enviar al Teléfono
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -57,9 +54,9 @@ jobs:
           # Aceptar licencias del SDK de Android
           yes | sdkmanager --licenses || true
 
-          # Instalar versión exacta de NDK especificada en build.gradle.kts
-          echo "Instalando Android NDK 28.2.13676358..."
-          yes | sdkmanager --install "ndk;28.2.13676358" "platforms;android-36" "build-tools;36.0.0" || true
+          # Instalar versión exacta de NDK y CMake especificadas en build.gradle.kts
+          echo "Instalando Android NDK 28.2.13676358 y CMake 3.31.6..."
+          yes | sdkmanager --install "cmake;3.31.6" "ndk;28.2.13676358" "platforms;android-36" "build-tools;36.0.0" || true
 
           # Configurar variables de entorno para NDK
           if [ -d "$ANDROID_HOME/ndk/28.2.13676358" ]; then
@@ -133,11 +130,55 @@ jobs:
             exit 1
           fi
 
-      # 11. Subir el APK Debug como artefacto de GitHub Actions
-      - name: Subir APK Debug como Artefacto Descargable
+      # 11. Conexión segura a Tailscale (Red Privada P2P hacia el teléfono)
+      - name: Conectar a Tailscale
+        if: ${{ env.HAS_TAILSCALE == 'true' }}
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+        env:
+          HAS_TAILSCALE: ${{ secrets.TAILSCALE_AUTHKEY != '' }}
+
+      # 12. Transferencia directa del APK a la carpeta /Navegador del teléfono vía SFTP/SCP
+      - name: Transferir APK a la carpeta /Navegador del teléfono
+        if: ${{ env.HAS_TRANSFER_CONFIG == 'true' }}
+        run: |
+          echo "============================================================"
+          echo "📲 Iniciando transferencia directa P2P hacia el móvil..."
+          echo "============================================================"
+          sudo apt-get update -y && sudo apt-get install -y sshpass
+          
+          PHONE_IP="${{ secrets.PHONE_IP }}"
+          SSH_PORT="${{ secrets.SSH_PORT || '2222' }}"
+          SSH_USER="${{ secrets.SSH_USER || 'github' }}"
+          APK_SRC="app/build/outputs/apk/debug/app-debug.apk"
+
+          echo "Conectando con $SSH_USER@$PHONE_IP en puerto $SSH_PORT..."
+          # Transferir a /storage/emulated/0/Navegador/app-debug.apk o alias raíz /app-debug.apk
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -P "$SSH_PORT" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=45 \
+            "$APK_SRC" \
+            "${SSH_USER}@${PHONE_IP}:/storage/emulated/0/Navegador/app-debug.apk" || \
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -P "$SSH_PORT" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=45 \
+            "$APK_SRC" \
+            "${SSH_USER}@${PHONE_IP}:/app-debug.apk"
+
+          echo "============================================================"
+          echo "🎉 ¡Transferencia finalizada! El APK está en tu carpeta /Navegador."
+          echo "============================================================"
+        env:
+          HAS_TRANSFER_CONFIG: ${{ secrets.TAILSCALE_AUTHKEY != '' && secrets.PHONE_IP != '' && secrets.SSH_PASSWORD != '' }}
+
+      # 13. Subir el APK Debug como artefacto descargable en GitHub (Respaldo)
+      - name: Subir APK Debug como Artefacto (Respaldo)
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7

@@ -93,8 +93,18 @@ El APK resultante se genera en el directorio:
 
 ## 🤖 Integración Continua (GitHub Actions CI)
 
-El repositorio cuenta con un flujo automatizado en `.github/workflows/build-debug.yml`:
-- **Compilación Limpia (Sin Caché):** Descarga el código, instala Java JDK 17, Android NDK 28, CMake 3.31+, Rust 2024 y descarga las dependencias de GeckoView Omni de Mozilla.
-- **Generación Forzada de Firma:** Ejecuta `./generate_debug_keystore.sh` para generar un almacén de claves `debug.keystore` desde cero de forma 100% desatendida.
-- **Artefacto Descargable:** Tras compilar `app-debug.apk`, lo sube automáticamente a los artefactos de la ejecución para descargarlo e instalarlo directamente en el teléfono.
-- **Ejecución Manual:** Disparable en cualquier momento desde la pestaña **Actions** de GitHub con el botón *Run workflow*.
+El repositorio cuenta con un flujo automatizado en `.github/workflows/build-debug.yml` con activación **exclusivamente manual** (`workflow_dispatch`):
+- **Compilación Limpia (Sin Caché):** Descarga el código, instala Java JDK 17, Android NDK 28, CMake 3.31+, Rust 2024 y descarga las dependencias de GeckoView Omni de Mozilla sin utilizar cachés previas.
+- **Generación Forzada de Firma:** Ejecuta `./generate_debug_keystore.sh` para generar un almacén de claves `debug.keystore` (RSA 2048 bits / PKCS12) desde cero de forma 100% desatendida y obligatoria.
+- **Transferencia Directa P2P al Teléfono:** Tras compilar el APK de depuración, se conecta a tu red privada segura mediante **Tailscale** y transfiere el archivo directamente a la carpeta `/storage/emulated/0/Navegador/app-debug.apk` de tu móvil mediante SFTP/SCP.
+- **Artefacto de Respaldo:** Si la conexión con el teléfono no estuviera activa, el APK se guarda de forma segura como artefacto descargable en la pestaña Actions de GitHub.
+
+### 🔐 Secretos Requeridos en GitHub (Settings ➔ Secrets and variables ➔ Actions)
+
+| Secreto | Descripción | Valor de Ejemplo |
+| :--- | :--- | :--- |
+| `TAILSCALE_AUTHKEY` | Clave de autenticación generada en la consola de Tailscale | `tskey-auth-kXXXXX...` |
+| `PHONE_IP` | Dirección IP privada de tu teléfono asignada por Tailscale | `100.x.y.z` |
+| `SSH_USER` | Nombre de usuario configurado en la app SFTP del móvil | `github` |
+| `SSH_PASSWORD` | Contraseña configurada en la app SFTP para el usuario | `(tu_contraseña)` |
+| `SSH_PORT` | Puerto de escucha del servidor SSH/SFTP en Android | `2222` |
