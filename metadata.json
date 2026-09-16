@@ -1,0 +1,6 @@
+{
+  "name": "Navegador Web",
+  "description": "Navegador web moderno y rápido para Android con soporte para pestañas, marcadores, historial y navegación segura.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

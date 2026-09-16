@@ -1,0 +1,56 @@
+*.iml
+.gradle
+.kotlin
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+.env
+debug.keystore
+
+# ==============================================================================
+# Artefactos de Compilación Nativa (C++, C23, C++26, CMake, Clang, NDK)
+# ==============================================================================
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.ninja
+.ninja_deps
+.ninja_log
+compile_commands.json
+*.o
+*.obj
+*.so
+*.a
+*.dylib
+*.dll
+*.gch
+*.pch
+*.dSYM/
+*.swp
+*.bak
+
+# ==============================================================================
+# Artefactos de Rust & Cargo
+# ==============================================================================
+/target/
+**/target/
+**/*.rs.bk
+Cargo.lock.bak
+.cargo/
+*.rlib
+*.rmeta
+*.pdb
+bindings/generated/
+UniFFI/generated/
+
