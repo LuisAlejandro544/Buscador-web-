@@ -171,10 +171,7 @@ jobs:
 
           # Archivo por lotes SFTP (Protocolo nativo de la app "SSH Server")
           # Como el Alias "/" apunta a /storage/emulated/0/Navegador, colocarlo en la raíz lo guarda en esa carpeta
-          cat << 'EOF' > /tmp/sftp_put.txt
-          put app/build/outputs/apk/debug/app-debug.apk app-debug.apk
-          bye
-          EOF
+          printf "put %s app-debug.apk\nbye\n" "$APK_SRC" > /tmp/sftp_put.txt
 
           echo "🚀 Transfiriendo APK por SFTP nativo a $SSH_USER@$PHONE_IP:$SSH_PORT..."
           TRANSFER_SUCCESS=false
@@ -184,10 +181,7 @@ jobs:
             echo "✅ Transferencia exitosa vía SFTP (alias raíz)."
           else
             echo "⚠️ SFTP directo falló. Intentando con ruta absoluta..."
-            cat << 'EOF' > /tmp/sftp_put_full.txt
-            put app/build/outputs/apk/debug/app-debug.apk /storage/emulated/0/Navegador/app-debug.apk
-            bye
-            EOF
+            printf "put %s /storage/emulated/0/Navegador/app-debug.apk\nbye\n" "$APK_SRC" > /tmp/sftp_put_full.txt
             if sshpass -p "$SSH_PASSWORD" sftp -P "$SSH_PORT" $SSH_OPTS -b /tmp/sftp_put_full.txt "${SSH_USER}@${PHONE_IP}"; then
               TRANSFER_SUCCESS=true
               echo "✅ Transferencia exitosa vía SFTP (ruta absoluta)."
