@@ -101,4 +101,12 @@ Este archivo proporciona el contexto fundamental del proyecto para cualquier mod
     - **Protección de Pantalla FLAG_SECURE:** Bloqueo de capturas de pantalla, grabadores externos y enmascaramiento visual en la vista de aplicaciones recientes de Android al entrar a incógnito.
     - **Evolución Continua:** El modo incógnito continuará expandiéndose con capas defensivas adicionales (bloqueo heurístico de telemetría, ofuscación de red y sandboxing estricto) para que sea un entorno de navegación de máxima seguridad real, muy superior a los modos privados genéricos del mercado.
 
+11. **Gestión de Cuentas e Identidad Web Integrada (`AccountCredentialManager` y `WebSignInBridge`):**
+    - **Credenciales Nativas AndroidX:** Integración con `androidx.credentials` (`CredentialManager`), `GetCredentialRequest` y `GetGoogleIdOption` en `AccountCredentialManager.kt`. Permite enlazar cuentas nativas de Google u otros proveedores en el dispositivo sin necesidad de bibliotecas legacy pesadas.
+    - **Persistencia en Room (`UserAccountEntity` y `UserAccountDao`):** Almacena perfiles vinculados con `email`, `displayName`, `photoUrl`, `idToken`, `provider` y el estado activo `isActive`. Soporta múltiples cuentas y conmutación ágil del perfil activo.
+    - **Detección Automática de Autenticación (`WebSignInBridge`):** Inspecciona las URLs cargadas en el motor web mediante patrones de detección de dominios de login (Google Accounts, OAuth2, OpenID Connect, FedCM y formularios de acceso comunes).
+    - **Banner Interactivo en Compose (`WebSignInPromptBanner`):** Muestra un banner estilo Google One-Tap en la parte superior del navegador con la cuenta activa ("Continuar como [Nombre]").
+    - **Inyección y Autocompletado en GeckoView:** Al confirmar el banner, `BrowserViewModel` invoca `engineController?.evaluateJavascript` con el script generado por `WebSignInBridge.generateSignInScript()`, autocompletando los campos de correo o activando los botones de acceso de Google.
+    - **Pantalla Dedicada (`AccountsScreen.kt`):** Pantalla completa para gestionar cuentas, cambiar la identidad activa, vincular nuevas cuentas o eliminarlas, accesible desde el menú desplegable y desde Ajustes.
+
 

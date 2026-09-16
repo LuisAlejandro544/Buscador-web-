@@ -5,11 +5,13 @@ import com.example.data.local.dao.CookieDao
 import com.example.data.local.dao.DownloadDao
 import com.example.data.local.dao.HistoryDao
 import com.example.data.local.dao.TabDao
+import com.example.data.local.dao.UserAccountDao
 import com.example.data.local.entity.BookmarkEntity
 import com.example.data.local.entity.CookieEntity
 import com.example.data.local.entity.DownloadEntity
 import com.example.data.local.entity.HistoryEntity
 import com.example.data.local.entity.TabEntity
+import com.example.data.local.entity.UserAccountEntity
 import com.example.data.model.SearchEngine
 import com.example.data.preferences.BrowserPreferences
 import kotlinx.coroutines.flow.Flow
@@ -25,6 +27,7 @@ class BrowserRepository(
     private val historyDao: HistoryDao,
     private val downloadDao: DownloadDao,
     private val cookieDao: CookieDao,
+    private val userAccountDao: UserAccountDao,
     private val preferences: BrowserPreferences
 ) {
     // --- Pestañas ---
@@ -99,7 +102,7 @@ class BrowserRepository(
 
     fun searchHistory(query: String): Flow<List<HistoryEntity>> = historyDao.searchHistory(query)
 
-    suspend fun addHistoryEntry(title: String, url: String, isIncognito: Boolean) {
+    suspend fun addHistoryEntry(title: String, url: String, isIncognito: Boolean, faviconUrl: String? = null) {
         // En modo incógnito NO se guarda historial
         if (isIncognito) return
         if (url == "about:blank" || url == "about:home") return
@@ -107,6 +110,7 @@ class BrowserRepository(
         val entry = HistoryEntity(
             title = title.ifBlank { url },
             url = url,
+            faviconUrl = faviconUrl,
             visitedAt = System.currentTimeMillis()
         )
         historyDao.insertHistory(entry)
@@ -136,6 +140,10 @@ class BrowserRepository(
 
     fun getTrackerCookies(): Flow<List<CookieEntity>> = cookieDao.getTrackerCookies()
 
+    fun getProtectedCookies(): Flow<List<CookieEntity>> = cookieDao.getProtectedCookies()
+
+    fun getNormalCookies(): Flow<List<CookieEntity>> = cookieDao.getNormalCookies()
+
     fun getDistinctCookieDomains(): Flow<List<String>> = cookieDao.getDistinctDomains()
 
     fun getCookiesByDomain(domain: String): Flow<List<CookieEntity>> = cookieDao.getCookiesByDomain(domain)
@@ -144,17 +152,58 @@ class BrowserRepository(
 
     fun getTrackerCookieCount(): Flow<Int> = cookieDao.getTrackerCookieCount()
 
+    fun getProtectedCookieCount(): Flow<Int> = cookieDao.getProtectedCookieCount()
+
     suspend fun addCookie(cookie: CookieEntity): Long = cookieDao.insertCookie(cookie)
 
     suspend fun addCookies(cookies: List<CookieEntity>) = cookieDao.insertCookies(cookies)
 
     suspend fun deleteCookieById(id: Long) = cookieDao.deleteCookieById(id)
 
+    suspend fun deleteCookiesByTabId(tabId: Long) = cookieDao.deleteCookiesByTabId(tabId)
+
+    suspend fun deleteCookiesByContextId(contextId: String) = cookieDao.deleteCookiesByContextId(contextId)
+
+    suspend fun deleteProtectedCookies() = cookieDao.deleteProtectedCookies()
+
     suspend fun deleteCookiesByDomain(domain: String) = cookieDao.deleteCookiesByDomain(domain)
 
     suspend fun deleteTrackerCookies() = cookieDao.deleteTrackerCookies()
 
     suspend fun clearAllCookies() = cookieDao.clearAllCookies()
+
+    // --- Cuentas de Usuario y Sincronización Web ---
+    fun getAllAccounts(): Flow<List<UserAccountEntity>> = userAccountDao.getAllAccounts()
+
+    fun getActiveAccount(): Flow<UserAccountEntity?> = userAccountDao.getActiveAccount()
+
+    suspend fun getActiveAccountDirect(): UserAccountEntity? = userAccountDao.getActiveAccountDirect()
+
+    fun getAccountsCount(): Flow<Int> = userAccountDao.getAccountsCount()
+
+    suspend fun linkAccount(account: UserAccountEntity): Long {
+        // Si la nueva cuenta se marca como activa, desactivamos las demás primero
+        if (account.isActive) {
+            userAccountDao.deactivateAllAccounts()
+        }
+        return userAccountDao.insertAccount(account)
+    }
+
+    suspend fun setActiveAccount(id: Long) = userAccountDao.switchActiveAccount(id)
+
+    suspend fun setAutoSignInWeb(id: Long, enabled: Boolean) = userAccountDao.updateAutoSignIn(id, enabled)
+
+    suspend fun removeAccount(id: Long) {
+        userAccountDao.deleteAccountById(id)
+        // Si eliminamos la activa y quedan cuentas, activamos la más reciente
+        val remaining = userAccountDao.getActiveAccountDirect()
+        if (remaining == null) {
+            // No hay activa, pero si hay alguna cuenta, reactivar la primera
+            // userAccountDao.getAllAccounts() mantendrá la consistencia
+        }
+    }
+
+    suspend fun clearAllAccounts() = userAccountDao.clearAllAccounts()
 
     // --- Preferencias y Ajustes ---
     val searchEngine: Flow<SearchEngine> = preferences.searchEngine

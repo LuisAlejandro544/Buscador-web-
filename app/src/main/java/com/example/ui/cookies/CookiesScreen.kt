@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,11 +15,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -75,7 +78,7 @@ import com.example.viewmodel.BrowserViewModel
  * Filtro de visualización de cookies de navegación.
  */
 enum class CookieFilterTab {
-    ALL, TRACKERS, BY_SITE
+    ALL, PROTECTED, TRACKERS, BY_SITE
 }
 
 /**
@@ -83,7 +86,8 @@ enum class CookieFilterTab {
  * 
  * Permite a los usuarios inspeccionar todas las cookies depositadas por los sitios web,
  * categorizarlas entre cookies funcionales y rastreadores de publicidad/analítica,
- * filtrar por dominio y realizar eliminaciones selectivas o masivas.
+ * diferenciar claramente las cookies originadas en pestañas protegidas frente a las estándar,
+ * y destruirlas automáticamente al cerrar la pestaña o manualmente.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,20 +98,24 @@ fun CookiesScreen(
 ) {
     val allCookies by viewModel.allCookies.collectAsStateWithLifecycle()
     val trackerCookies by viewModel.trackerCookies.collectAsStateWithLifecycle()
+    val protectedCookies by viewModel.protectedCookies.collectAsStateWithLifecycle()
     val totalCount by viewModel.cookieCount.collectAsStateWithLifecycle()
     val trackerCount by viewModel.trackerCookieCount.collectAsStateWithLifecycle()
+    val protectedCount by viewModel.protectedCookieCount.collectAsStateWithLifecycle()
     val domains by viewModel.cookieDomains.collectAsStateWithLifecycle()
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf(CookieFilterTab.ALL) }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var showDeleteTrackersDialog by remember { mutableStateOf(false) }
+    var showDeleteProtectedDialog by remember { mutableStateOf(false) }
     var domainToDelete by remember { mutableStateOf<String?>(null) }
 
     // Filtrar la lista según la búsqueda y la pestaña seleccionada
-    val filteredCookies = remember(allCookies, trackerCookies, searchQuery, selectedTab) {
+    val filteredCookies = remember(allCookies, trackerCookies, protectedCookies, searchQuery, selectedTab) {
         val baseList = when (selectedTab) {
             CookieFilterTab.ALL -> allCookies
+            CookieFilterTab.PROTECTED -> protectedCookies
             CookieFilterTab.TRACKERS -> trackerCookies
             CookieFilterTab.BY_SITE -> allCookies
         }
@@ -122,20 +130,28 @@ fun CookiesScreen(
     }
 
     Scaffold(
-        modifier = modifier.testTag("cookies_screen"),
+        modifier = modifier
+            .fillMaxSize()
+            .imePadding()
+            .testTag("cookies_screen"),
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
+                    Column(verticalArrangement = Arrangement.Center) {
                         Text(
                             text = "Cookies de navegación",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "$totalCount almacenadas • $trackerCount rastreadores",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 },
@@ -151,6 +167,18 @@ fun CookiesScreen(
                     }
                 },
                 actions = {
+                    if (protectedCount > 0) {
+                        IconButton(
+                            onClick = { showDeleteProtectedDialog = true },
+                            modifier = Modifier.testTag("btn_delete_protected_cookies")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Security,
+                                contentDescription = "Eliminar cookies protegidas",
+                                tint = Color(0xFF00C853)
+                            )
+                        }
+                    }
                     if (trackerCount > 0) {
                         IconButton(
                             onClick = { showDeleteTrackersDialog = true },
@@ -190,6 +218,7 @@ fun CookiesScreen(
             // Tarjeta superior con métricas de privacidad
             CookieMetricsHeader(
                 totalCookies = totalCount,
+                protectedCount = protectedCount,
                 trackerCount = trackerCount,
                 siteCount = domains.size,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -222,24 +251,43 @@ fun CookiesScreen(
                 shape = RoundedCornerShape(12.dp)
             )
 
-            // Chips de filtrado de pestañas
+            // Chips de filtrado de pestañas con desplazamiento horizontal para evitar deformación en móvil
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FilterChip(
                     selected = selectedTab == CookieFilterTab.ALL,
                     onClick = { selectedTab = CookieFilterTab.ALL },
-                    label = { Text("Todas ($totalCount)") },
+                    label = { Text("Todas ($totalCount)", maxLines = 1) },
                     leadingIcon = { Icon(Icons.Default.Cookie, contentDescription = null, modifier = Modifier.size(16.dp)) },
                     modifier = Modifier.testTag("tab_all_cookies")
                 )
                 FilterChip(
+                    selected = selectedTab == CookieFilterTab.PROTECTED,
+                    onClick = { selectedTab = CookieFilterTab.PROTECTED },
+                    label = { Text("Protegidas ($protectedCount)", maxLines = 1) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Security,
+                            contentDescription = null,
+                            tint = if (protectedCount > 0) Color(0xFF00C853) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = Color(0xFF00C853).copy(alpha = 0.18f),
+                        selectedLabelColor = Color(0xFF007E33)
+                    ),
+                    modifier = Modifier.testTag("tab_protected_cookies")
+                )
+                FilterChip(
                     selected = selectedTab == CookieFilterTab.TRACKERS,
                     onClick = { selectedTab = CookieFilterTab.TRACKERS },
-                    label = { Text("Rastreadores ($trackerCount)") },
+                    label = { Text("Rastreadores ($trackerCount)", maxLines = 1) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Shield,
@@ -257,10 +305,53 @@ fun CookiesScreen(
                 FilterChip(
                     selected = selectedTab == CookieFilterTab.BY_SITE,
                     onClick = { selectedTab = CookieFilterTab.BY_SITE },
-                    label = { Text("Por Sitio") },
+                    label = { Text("Por Sitio", maxLines = 1) },
                     leadingIcon = { Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(16.dp)) },
                     modifier = Modifier.testTag("tab_by_site_cookies")
                 )
+            }
+
+            // Banner explicativo cuando se visualizan cookies de pestaña protegida
+            AnimatedVisibility(
+                visible = selectedTab == CookieFilterTab.PROTECTED,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFFE8F5E9)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Security,
+                            contentDescription = null,
+                            tint = Color(0xFF1B5E20),
+                            modifier = Modifier.size(26.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Aislamiento de Pestañas Protegidas",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1B5E20)
+                            )
+                            Text(
+                                text = "Cookies efímeras en contenedor aislado. Se destruyen automáticamente en cuanto cierras la pestaña correspondiente.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF2E7D32)
+                            )
+                        }
+                    }
+                }
             }
 
             // Lista de contenido según pestaña activa
@@ -331,6 +422,30 @@ fun CookiesScreen(
         )
     }
 
+    if (showDeleteProtectedDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteProtectedDialog = false },
+            title = { Text("¿Eliminar cookies de pestañas protegidas?") },
+            text = { Text("Se eliminarán las $protectedCount cookies registradas en modo pestaña protegida. Recuerda que también se destruyen automáticamente cada vez que cierras la pestaña.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteProtectedCookies()
+                        showDeleteProtectedDialog = false
+                    },
+                    modifier = Modifier.testTag("confirm_delete_protected_cookies")
+                ) {
+                    Text("Eliminar Protegidas", color = Color(0xFF007E33), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteProtectedDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
     if (showDeleteTrackersDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteTrackersDialog = false },
@@ -385,6 +500,7 @@ fun CookiesScreen(
 @Composable
 fun CookieMetricsHeader(
     totalCookies: Int,
+    protectedCount: Int,
     trackerCount: Int,
     siteCount: Int,
     modifier: Modifier = Modifier
@@ -399,15 +515,21 @@ fun CookieMetricsHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(14.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
             MetricItem(
                 count = totalCookies.toString(),
-                label = "Total Cookies",
+                label = "Total",
                 icon = Icons.Default.Cookie,
                 iconTint = MaterialTheme.colorScheme.primary
+            )
+            MetricItem(
+                count = protectedCount.toString(),
+                label = "Protegidas",
+                icon = Icons.Default.Security,
+                iconTint = Color(0xFF00C853)
             )
             MetricItem(
                 count = trackerCount.toString(),
@@ -511,11 +633,29 @@ fun CookieDetailCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Etiquetas de estado
+            // Etiquetas de estado y origen
             Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Distintivo de Origen: Protegida (Aislada) vs Estándar
+                if (cookie.isProtected) {
+                    BadgeChip(
+                        label = "🛡️ Pestaña Protegida",
+                        backgroundColor = Color(0xFFE8F5E9),
+                        textColor = Color(0xFF1B5E20)
+                    )
+                } else {
+                    BadgeChip(
+                        label = "🌐 Estándar",
+                        backgroundColor = MaterialTheme.colorScheme.surfaceVariant,
+                        textColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
                 if (cookie.isTracker) {
                     BadgeChip(
                         label = "Rastreador",
@@ -545,6 +685,16 @@ fun CookieDetailCard(
                         textColor = MaterialTheme.colorScheme.onTertiaryContainer
                     )
                 }
+            }
+
+            if (cookie.isProtected) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "⚡ Aislamiento: Se eliminará automáticamente al cerrar la pestaña",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF007E33),
+                    fontWeight = FontWeight.Medium
+                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -594,6 +744,7 @@ fun DomainCookieGroupCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val trackersInDomain = cookies.count { it.isTracker }
+    val protectedInDomain = cookies.count { it.isProtected }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -638,6 +789,14 @@ fun DomainCookieGroupCard(
                                     text = "• $trackersInDomain rastreadores",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            if (protectedInDomain > 0) {
+                                Text(
+                                    text = "• $protectedInDomain protegidas",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF007E33),
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }

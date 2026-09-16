@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -45,10 +46,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.example.data.local.entity.HistoryEntity
 import com.example.viewmodel.BrowserViewModel
 import java.text.SimpleDateFormat
@@ -64,7 +68,8 @@ import java.util.Locale
 @Composable
 fun HistoryScreen(
     viewModel: BrowserViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val historyList by viewModel.recentHistory.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
@@ -82,6 +87,10 @@ fun HistoryScreen(
     }
 
     Scaffold(
+        modifier = modifier
+            .fillMaxSize()
+            .imePadding()
+            .testTag("history_screen"),
         topBar = {
             TopAppBar(
                 title = {
@@ -232,18 +241,41 @@ private fun HistoryItemCard(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Icono / Favicon del sitio web visitado
             Surface(
-                shape = CircleShape,
+                shape = RoundedCornerShape(10.dp),
                 color = MaterialTheme.colorScheme.secondaryContainer,
                 modifier = Modifier.size(40.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.Language,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    val favicon = item.faviconUrl ?: remember(item.url) {
+                        try {
+                            val host = java.net.URI(item.url).host
+                            if (!host.isNullOrBlank()) "https://www.google.com/s2/favicons?domain=$host&sz=128" else null
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    var isImageError by remember(favicon) { mutableStateOf(false) }
+
+                    if (!favicon.isNullOrBlank() && !isImageError) {
+                        AsyncImage(
+                            model = favicon,
+                            contentDescription = "Icono de ${item.title}",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(RoundedCornerShape(4.dp)),
+                            onError = { isImageError = true }
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Language,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
 

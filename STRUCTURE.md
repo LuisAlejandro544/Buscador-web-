@@ -22,6 +22,9 @@ app/src/main/
 │   └── native-bridge.cpp            # Puente JNI y funciones nativas exportadas (libbrowser_native.so)
 ├── java/com/example/
 │   ├── browser/
+│   │   ├── account/
+│   │   │   ├── AccountCredentialManager.kt # Gestor de credenciales nativas AndroidX y Google ID
+│   │   │   └── WebSignInBridge.kt          # Detección de páginas de autenticación y generación de JS de acceso
 │   │   ├── download/
 │   │   │   └── DownloadManagerHelper.kt # Gestor de descargas con integración al DownloadManager de Android
 │   │   ├── engine/
@@ -45,13 +48,15 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   │   │   ├── CookieDao.kt         # Acceso, filtrado por sitio y purga de cookies y rastreadores
 │   │   │   ├── DownloadDao.kt       # Acceso y control del registro de descargas
 │   │   │   ├── HistoryDao.kt        # Acceso al historial cronológico de navegación
-│   │   │   └── TabDao.kt            # Acceso y persistencia de pestañas abiertas (normales y protegidas)
+│   │   │   ├── TabDao.kt            # Acceso y persistencia de pestañas abiertas (normales y protegidas)
+│   │   │   └── UserAccountDao.kt    # Acceso, conmutación y persistencia de cuentas de usuario
 │   │   ├── entity/
 │   │   │   ├── BookmarkEntity.kt    # Modelo relacional para marcadores
 │   │   │   ├── CookieEntity.kt      # Modelo relacional para cookies (dominio, valor, expiración, isTracker)
 │   │   │   ├── DownloadEntity.kt    # Modelo relacional para descargas (estado, bytes, URI)
 │   │   │   ├── HistoryEntity.kt     # Modelo relacional para historial
-│   │   │   └── TabEntity.kt         # Modelo relacional para pestañas (incluye flags isIncognito, isProtected y contextId)
+│   │   │   ├── TabEntity.kt         # Modelo relacional para pestañas (incluye flags isIncognito, isProtected y contextId)
+│   │   │   └── UserAccountEntity.kt # Modelo relacional para cuentas vinculadas (email, nombre, activo)
 │   │   └── BrowserDatabase.kt       # Base de datos Room con control de versiones (v4) y migraciones
 │   ├── model/
 │   │   ├── BrowserTab.kt            # Modelo de dominio para pestañas
@@ -61,12 +66,15 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   └── repository/
 │       └── BrowserRepository.kt     # Repositorio unificado que conecta DAOs, DataStore y ViewModel
 ├── ui/
+│   ├── account/
+│   │   └── AccountsScreen.kt        # Pantalla completa de gestión de cuentas vinculadas y conmutación
 │   ├── bookmarks/
 │   │   └── BookmarksScreen.kt       # Pantalla completa de marcadores con búsqueda y CRUD
 │   ├── browser/
 │   │   └── BrowserScreen.kt         # Pantalla principal con contenedor GeckoView, omnibox y menú
 │   ├── components/
-│   │   └── WebPromptDialog.kt       # Diálogos nativos Material 3 para alerts, confirms, prompts y ficheros
+│   │   ├── WebPromptDialog.kt       # Diálogos nativos Material 3 para alerts, confirms, prompts y ficheros
+│   │   └── WebSignInPromptBanner.kt # Banner flotante interactivo de acceso web con un solo toque
 │   ├── cookies/
 │   │   └── CookiesScreen.kt         # Pantalla de auditoría de cookies, detección de rastreadores y borrado
 │   ├── downloads/
@@ -143,5 +151,26 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
   - **Protección Visual FLAG_SECURE:** Bloqueo de capturas de pantalla y ocultación visual en la multitarea de Android al navegar en incógnito.
   - **Arquitectura Abierta para Expansión Continua:** El motor de incógnito está concebido para incorporar progresivamente más capas de defensa activa (bloqueo heurístico de telemetría oculta en scripts, virtualización de red y sandboxing riguroso).
 - **Capa Nativa Híbrida (C++26 / Rust 2024):** Preparada mediante NDK r28 y CMake 3.31+ para vincular librerías `.so` de alto rendimiento. Rust asume la lógica pesada de seguridad (bloqueo de anuncios, hashes criptográficos, protección de rastreo) y C++ proporciona aceleración por hardware y enlace con APIs nativas del sistema. Los artefactos temporales de compilación de CMake y Cargo quedan completamente aislados por `.gitignore`.
+- **Ecosistema de Extensiones Web (WebExtensions) y Sinergia Híbrida con Rust:**
+  - **Soporte Nativo de Extensiones en GeckoView:** La arquitectura aprovecha directamente `GeckoRuntime.webExtensionController` para gestionar el ciclo de vida de extensiones de navegador completas (`WebExtensions`).
+  - **Extensiones Preinstaladas de Fábrica (Built-in Extensions):**
+    - Las extensiones clave de privacidad y bloqueo (como **uBlock Origin**) se empaquetan en el APK dentro de `app/src/main/assets/extensions/` como paquetes `.xpi` o carpetas de manifiesto.
+    - Durante la inicialización del motor en `GeckoRuntimeProvider`, se invoca `runtime.webExtensionController.installBuiltIn("resource://android/assets/extensions/ublock_origin/")`. Esto garantiza protección activa desde el primer milisegundo de navegación, sin requerir descargas adicionales ni configuración previa del usuario móvil.
+    - Soporte planificado para catálogo local de extensiones, instalación desde archivos `.xpi` descargados o enlaces web, y habilitación/deshabilitación individual.
+  - **Sinergia Híbrida uBlock Origin (JS/Web) + Motor Nativo Rust (`core-native`):**
+    En smartphones, ejecutar cientos de miles de reglas exclusivamente en el motor JavaScript de una extensión satura el hilo de eventos y consume batería. La arquitectura propone una división de responsabilidades simbiótica:
+    1. *uBlock Origin (Capa Web / Interfaz / Inyección DOM):* Proporciona la interfaz de usuario familiar, defusers de scriptlets para evadir anti-adblockers y filtrado cosmético de nodos en el DOM.
+    2. *Rust `core-native` (Capa de Rendimiento Extremo / JNI):*
+       - **Evaluación de Filtros en Memoria Nativa:** Indexación de listas masivas (EasyList, Peter Lowe, etc.) en estructuras ultra compactas (Tries, filtros de Bloom y autómatas Aho-Corasick) ejecutadas a velocidad nativa sin sobrecargar el recolector de basura de Java ni la máquina virtual JS.
+       - **Desinfección Instantánea de URLs (Query Parameter Stripping):** Limpieza inmediata de tokens de seguimiento y telemetría (`fbclid`, `gclid`, `utm_*`, `yclid`, `mc_eid`) en Rust antes de despachar la petición de red.
+       - **Filtrado Previo a Nivel de Red y DNS:** Bloqueo de peticiones maliciosas antes de la negociación TLS en GeckoView, reduciendo drásticamente el consumo de datos móviles y energía del procesador.
+       - **Auditoría y Métricas Zero-Copy:** Contadores de elementos bloqueados y telemetría de amenazas expuestos a Compose con latencia mínima.
 - **Canal de Despliegue P2P (GitHub Actions + Syncthing):** El flujo en `.github/workflows/build-debug.yml` implementa entrega continua sin intermediarios: compila el APK Debug de forma limpia (sin cachés), genera una firma `debug.keystore` fresca y transfiere el binario directamente al almacenamiento del móvil (`/storage/emulated/0/Navegador/app-debug.apk`) a través del protocolo P2P de Syncthing con relays globales cifrados de extremo a extremo.
+- **Gestión de Cuentas e Identidad Web Integrada (`AccountCredentialManager` y `WebSignInBridge`):**
+  - **Vinculación Nativa con `androidx.credentials`:** Utiliza `CredentialManager` y `GetGoogleIdOption` para enlazar cuentas de Google o credenciales personalizadas en el dispositivo móvil sin depender de servicios propietarios inflexibles.
+  - **Almacenamiento Reactivo con Room v4 (`UserAccountEntity` / `UserAccountDao`):** Persistencia local de perfiles con soporte multicuenta, avatar, correo y bandera de cuenta activa (`isActive`), permitiendo conmutar la identidad principal en cualquier momento.
+  - **Detección Dinámica de Autenticación (`WebSignInBridge`):** Analiza en tiempo real las URLs cargadas en el motor web para identificar portales de acceso, protocolos OAuth2, OpenID Connect y botones de inicio de sesión de Google.
+  - **Banner Interactivo One-Tap en Jetpack Compose (`WebSignInPromptBanner`):** Despliega un componente animado en la parte superior del navegador con la identidad activa del usuario cuando se visita un sitio web compatible.
+  - **Inyección y Autocompletado en GeckoView:** Al presionar "Continuar", el navegador evalúa JavaScript en el contexto de la página para rellenar campos de correo/usuario o activar selectores de inicio de sesión de Google automáticamente.
+  - **Pantalla Dedicada (`AccountsScreen`):** Vista completa accesible desde el menú principal del navegador y desde Ajustes para vincular cuentas, alternar perfiles y gestionar credenciales guardadas.
 

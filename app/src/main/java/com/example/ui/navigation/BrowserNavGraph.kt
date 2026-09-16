@@ -5,6 +5,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.ui.account.AccountsScreen
 import com.example.ui.bookmarks.BookmarksScreen
 import com.example.ui.browser.BrowserScreen
 import com.example.ui.cookies.CookiesScreen
@@ -17,7 +18,7 @@ import com.example.viewmodel.BrowserViewModel
 /**
  * Grafo de navegación principal de la aplicación del navegador web.
  * Administra el enrutamiento desacoplado entre las distintas pantallas:
- * Navegador, Pestañas, Marcadores, Historial, Descargas, Cookies de navegación y Ajustes.
+ * Navegador, Pestañas, Marcadores, Historial, Descargas, Cookies de navegación, Ajustes y Cuentas.
  */
 @Composable
 fun BrowserNavGraph(
@@ -36,7 +37,8 @@ fun BrowserNavGraph(
                 onNavigateToHistory = { navController.navigate(Screen.History.route) },
                 onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
                 onNavigateToDownloads = { navController.navigate(Screen.Downloads.route) },
-                onNavigateToCookies = { navController.navigate(Screen.Cookies.route) }
+                onNavigateToCookies = { navController.navigate(Screen.Cookies.route) },
+                onNavigateToAccounts = { navController.navigate(Screen.Accounts.route) }
             )
         }
 
@@ -75,11 +77,19 @@ fun BrowserNavGraph(
             )
         }
 
+        composable(Screen.Accounts.route) {
+            AccountsScreen(
+                viewModel = viewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
         composable(Screen.Settings.route) {
             SettingsScreen(
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToCookies = { navController.navigate(Screen.Cookies.route) }
+                onNavigateToCookies = { navController.navigate(Screen.Cookies.route) },
+                onNavigateToAccounts = { navController.navigate(Screen.Accounts.route) }
             )
         }
     }

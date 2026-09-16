@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Cookie
@@ -69,7 +70,8 @@ import com.example.viewmodel.BrowserViewModel
 fun SettingsScreen(
     viewModel: BrowserViewModel,
     onNavigateBack: () -> Unit,
-    onNavigateToCookies: () -> Unit = {}
+    onNavigateToCookies: () -> Unit = {},
+    onNavigateToAccounts: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -79,6 +81,8 @@ fun SettingsScreen(
     val isCookiesEnabled by viewModel.isCookiesEnabled.collectAsState()
     val isDntEnabled by viewModel.isDoNotTrackEnabled.collectAsState()
     val homePageUrl by viewModel.homePageUrl.collectAsState()
+    val activeAccount by viewModel.activeAccount.collectAsState()
+    val accountsCount by viewModel.accountsCount.collectAsState()
 
     var showSearchEngineDialog by remember { mutableStateOf(false) }
     var showHomeUrlDialog by remember { mutableStateOf(false) }
@@ -104,6 +108,58 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Sección Cuentas y Acceso Web
+            Text(
+                text = "Identidad y Cuentas Web",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToAccounts() }
+                    .testTag("setting_accounts_card"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (activeAccount != null) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                                     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.AccountCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = activeAccount?.displayName ?: "Cuentas y Sincronización Web",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            text = activeAccount?.email ?: "Vincula tu cuenta de Google para iniciar sesión con un toque en webs",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
             // Sección General
             Text(
                 text = "General",

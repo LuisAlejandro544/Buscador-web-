@@ -4,6 +4,9 @@ import android.app.Application
 import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.browser.account.AccountCredentialManager
+import com.example.browser.account.WebSignInBridge
+import com.example.browser.account.WebSignInPrompt
 import com.example.browser.download.DownloadManagerHelper
 import com.example.browser.engine.BrowserEngineContract
 import com.example.browser.engine.EnginePageState
@@ -18,6 +21,7 @@ import com.example.data.local.entity.CookieEntity
 import com.example.data.local.entity.DownloadEntity
 import com.example.data.local.entity.HistoryEntity
 import com.example.data.local.entity.TabEntity
+import com.example.data.local.entity.UserAccountEntity
 import com.example.data.model.SearchEngine
 import com.example.data.preferences.BrowserPreferences
 import com.example.data.repository.BrowserRepository
@@ -37,11 +41,13 @@ import kotlinx.coroutines.launch
 /**
  * ViewModel principal del Navegador Web.
  * Controla el ciclo de vida de las pestañas, estado de carga, historial,
- * marcadores, descargas avanzadas, diálogos web nativos y sincronización de configuraciones.
+ * marcadores, descargas avanzadas, diálogos web nativos, sincronización de configuraciones
+ * y vinculación de cuentas de usuario con puente de autenticación web.
  */
 class BrowserViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: BrowserRepository
+    val credentialManager = AccountCredentialManager(application)
 
     init {
         val database = BrowserDatabase.getInstance(application)
@@ -52,9 +58,24 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             historyDao = database.historyDao(),
             downloadDao = database.downloadDao(),
             cookieDao = database.cookieDao(),
+            userAccountDao = database.userAccountDao(),
             preferences = preferences
         )
     }
+
+    // --- Cuentas de Usuario y Sincronización Web ---
+    val allAccounts: StateFlow<List<UserAccountEntity>> = repository.getAllAccounts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val activeAccount: StateFlow<UserAccountEntity?> = repository.getActiveAccount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val accountsCount: StateFlow<Int> = repository.getAccountsCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    // Solicitud activa de inicio de sesión asistido en la página web actual
+    private val _webSignInPrompt = MutableStateFlow<WebSignInPrompt?>(null)
+    val webSignInPrompt: StateFlow<WebSignInPrompt?> = _webSignInPrompt.asStateFlow()
 
     // --- Preferencias ---
     val searchEngine: StateFlow<SearchEngine> = repository.searchEngine
@@ -197,13 +218,45 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             if (count == 0) {
                 seedInitialCookies()
             }
+            // Limpieza automática de cookies huérfanas de pestañas protegidas cerradas con anterioridad
+            val openProtectedTabs = repository.getProtectedTabs().first().map { it.id }.toSet()
+            val allExistingCookies = repository.getAllCookies().first()
+            allExistingCookies.filter { it.isProtected && (it.tabId == null || !openProtectedTabs.contains(it.tabId)) }
+                .forEach { orphaned ->
+                    repository.deleteCookieById(orphaned.id)
+                }
         }
 
         // Registrar cookies y rastreadores detectados al navegar
         viewModelScope.launch {
             _pageState.collect { state ->
                 if (state.url.isNotBlank() && state.url != "about:home" && state.url != "about:blank") {
-                    recordCookiesForUrl(state.url)
+                    recordCookiesForUrl(state.url, _activeTab.value)
+                }
+            }
+        }
+
+        // Detectar si la página web requiere o soporta inicio de sesión asistido con cuenta vinculada
+        viewModelScope.launch {
+            _pageState.collect { state ->
+                val currentTab = _activeTab.value
+                val currentAccount = activeAccount.value
+                if (state.url.isNotBlank() &&
+                    state.url != "about:home" &&
+                    state.url != "about:blank" &&
+                    currentTab != null &&
+                    !currentTab.isIncognito &&
+                    !currentTab.isProtected &&
+                    currentAccount != null &&
+                    currentAccount.autoSignInWeb
+                ) {
+                    if (WebSignInBridge.isAuthPage(state.url)) {
+                        _webSignInPrompt.value = WebSignInBridge.createPrompt(state.url, currentAccount)
+                    } else {
+                        _webSignInPrompt.value = null
+                    }
+                } else {
+                    _webSignInPrompt.value = null
                 }
             }
         }
@@ -396,6 +449,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             _hibernatedTabIds.value = _hibernatedTabIds.value - tabId
             repository.closeTab(tabId)
 
+            // Si la pestaña era protegida, destruir automáticamente todas sus cookies
+            if (isProtected) {
+                repository.deleteCookiesByTabId(tabId)
+                if (contextId != null) {
+                    repository.deleteCookiesByContextId(contextId)
+                }
+            }
+
             if (isIncognito) {
                 // Purga de memoria RAM inmediata para sesiones de incógnito
                 sessionManager.purgeIncognitoMemory()
@@ -445,6 +506,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                         TabThumbnailManager.removeThumbnail(it.id)
                         _hibernatedTabIds.value = _hibernatedTabIds.value - it.id
                     }
+                    repository.deleteProtectedCookies()
                     repository.clearProtectedTabs()
                     val normalTabs = repository.getNormalTabs().first()
                     if (normalTabs.isNotEmpty()) {
@@ -610,12 +672,24 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun onPageFinished(url: String, title: String?) {
         val isSecure = url.startsWith("https://", ignoreCase = true)
         val resolvedTitle = title ?: url
+        // Obtener favicon representativo del dominio mediante servicio de iconos de alta resolución
+        val faviconUrl = try {
+            val uri = android.net.Uri.parse(url)
+            val host = uri.host?.removePrefix("www.")
+            if (!host.isNullOrBlank() && !url.startsWith("about:")) {
+                "https://www.google.com/s2/favicons?domain=$host&sz=128"
+            } else null
+        } catch (_: Throwable) {
+            null
+        }
+
         _pageState.value = _pageState.value.copy(
             url = url,
             title = resolvedTitle,
             isLoading = false,
             progress = 100,
-            isSecure = isSecure
+            isSecure = isSecure,
+            faviconUrl = faviconUrl
         )
 
         _activeTab.value?.let { currentTab ->
@@ -627,8 +701,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             _activeTab.value = updated
             viewModelScope.launch {
                 repository.updateTab(updated)
-                // Guardar en historial si no es incógnito
-                repository.addHistoryEntry(resolvedTitle, url, _isIncognitoMode.value)
+                // Guardar en historial con su icono de sitio si no es incógnito
+                repository.addHistoryEntry(resolvedTitle, url, _isIncognitoMode.value, faviconUrl)
                 // Capturar miniatura tras el renderizado de la página
                 delay(400L)
                 captureCurrentTabThumbnail()
@@ -753,10 +827,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val trackerCookies: StateFlow<List<CookieEntity>> = repository.getTrackerCookies()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val protectedCookies: StateFlow<List<CookieEntity>> = repository.getProtectedCookies()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val cookieCount: StateFlow<Int> = repository.getCookieCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val trackerCookieCount: StateFlow<Int> = repository.getTrackerCookieCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val protectedCookieCount: StateFlow<Int> = repository.getProtectedCookieCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val cookieDomains: StateFlow<List<String>> = repository.getDistinctCookieDomains()
@@ -804,6 +884,15 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
+     * Elimina todas las cookies originadas en pestañas protegidas.
+     */
+    fun deleteProtectedCookies() {
+        viewModelScope.launch {
+            repository.deleteProtectedCookies()
+        }
+    }
+
+    /**
      * Limpia completamente todas las cookies registradas en la base de datos y en el motor GeckoView.
      */
     fun clearAllCookies() {
@@ -831,7 +920,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 isTracker = true,
                 category = "Rastreo y Publicidad",
                 isSecure = true,
-                isHttpOnly = false
+                isHttpOnly = false,
+                isProtected = false
             ),
             CookieEntity(
                 name = "_gid",
@@ -841,7 +931,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 isTracker = true,
                 category = "Analítica",
                 isSecure = true,
-                isHttpOnly = false
+                isHttpOnly = false,
+                isProtected = false
             ),
             CookieEntity(
                 name = "NID",
@@ -851,7 +942,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 isTracker = true,
                 category = "Rastreo y Publicidad",
                 isSecure = true,
-                isHttpOnly = true
+                isHttpOnly = true,
+                isProtected = false
             ),
             CookieEntity(
                 name = "PREF",
@@ -861,7 +953,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 isTracker = false,
                 category = "Funcional",
                 isSecure = true,
-                isHttpOnly = false
+                isHttpOnly = false,
+                isProtected = false
             ),
             CookieEntity(
                 name = "VISITOR_INFO1_LIVE",
@@ -871,7 +964,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 isTracker = true,
                 category = "Rastreo y Publicidad",
                 isSecure = true,
-                isHttpOnly = true
+                isHttpOnly = true,
+                isProtected = false
             ),
             CookieEntity(
                 name = "_fbp",
@@ -881,7 +975,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 isTracker = true,
                 category = "Rastreo y Publicidad",
                 isSecure = true,
-                isHttpOnly = false
+                isHttpOnly = false,
+                isProtected = false
             ),
             CookieEntity(
                 name = "WMF-Last-Access",
@@ -891,7 +986,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 isTracker = false,
                 category = "Funcional",
                 isSecure = true,
-                isHttpOnly = true
+                isHttpOnly = true,
+                isProtected = false
             ),
             CookieEntity(
                 name = "GeoIP",
@@ -901,7 +997,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 isTracker = false,
                 category = "Funcional",
                 isSecure = true,
-                isHttpOnly = false
+                isHttpOnly = false,
+                isProtected = false
             ),
             CookieEntity(
                 name = "user_session",
@@ -911,7 +1008,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 isTracker = false,
                 category = "Sesión",
                 isSecure = true,
-                isHttpOnly = true
+                isHttpOnly = true,
+                isProtected = true,
+                contextId = "context_protected_demo",
+                tabId = 9999L
             ),
             CookieEntity(
                 name = "_octo",
@@ -921,16 +1021,18 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 isTracker = true,
                 category = "Analítica",
                 isSecure = true,
-                isHttpOnly = false
+                isHttpOnly = false,
+                isProtected = false
             )
         )
         repository.addCookies(initialList)
     }
 
     /**
-     * Extrae el dominio y cataloga cookies detectadas durante la navegación web.
+     * Extrae el dominio y cataloga cookies detectadas durante la navegación web,
+     * asociándolas a la pestaña activa (y si ésta es protegida o normal).
      */
-    private fun recordCookiesForUrl(url: String) {
+    private fun recordCookiesForUrl(url: String, tab: TabEntity?) {
         viewModelScope.launch {
             try {
                 val uri = android.net.Uri.parse(url)
@@ -940,6 +1042,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 val cleanHost = host.removePrefix("www.")
                 val isDuck = cleanHost.contains("duckduckgo")
                 val isWiki = cleanHost.contains("wikipedia")
+                val isProtectedTab = tab?.isProtected == true
+                val tabId = tab?.id
+                val contextId = tab?.contextId
 
                 val cookiesToAdd = mutableListOf<CookieEntity>()
                 // Cookie de sesión base para el sitio
@@ -952,7 +1057,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                         isTracker = false,
                         category = "Sesión",
                         isSecure = url.startsWith("https"),
-                        isHttpOnly = true
+                        isHttpOnly = true,
+                        isProtected = isProtectedTab,
+                        contextId = contextId,
+                        tabId = tabId
                     )
                 )
 
@@ -967,7 +1075,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                             isTracker = true,
                             category = "Rastreo y Publicidad",
                             isSecure = true,
-                            isHttpOnly = false
+                            isHttpOnly = false,
+                            isProtected = isProtectedTab,
+                            contextId = contextId,
+                            tabId = tabId
                         )
                     )
                 }
@@ -977,5 +1088,75 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 // Silencioso en caso de URIs especiales
             }
         }
+    }
+
+    // --- Métodos de Gestión de Cuentas de Usuario y Acceso Web ---
+
+    /**
+     * Vincula una cuenta de usuario (Google o personalizada) en la base de datos local.
+     */
+    fun linkAccount(
+        email: String,
+        displayName: String,
+        photoUrl: String? = null,
+        provider: String = "GOOGLE",
+        idToken: String? = null,
+        autoSignInWeb: Boolean = true
+    ) {
+        viewModelScope.launch {
+            val account = UserAccountEntity(
+                email = email,
+                displayName = displayName,
+                photoUrl = photoUrl,
+                provider = provider,
+                isActive = true,
+                autoSignInWeb = autoSignInWeb,
+                idToken = idToken
+            )
+            repository.linkAccount(account)
+        }
+    }
+
+    /**
+     * Alterna la cuenta activa principal del navegador.
+     */
+    fun switchActiveAccount(accountId: Long) {
+        viewModelScope.launch {
+            repository.setActiveAccount(accountId)
+        }
+    }
+
+    /**
+     * Modifica el permiso de inicio de sesión automático web para una cuenta.
+     */
+    fun toggleAutoSignInWeb(accountId: Long, enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setAutoSignInWeb(accountId, enabled)
+        }
+    }
+
+    /**
+     * Desvincula y elimina una cuenta registrada del navegador.
+     */
+    fun removeAccount(accountId: Long) {
+        viewModelScope.launch {
+            repository.removeAccount(accountId)
+        }
+    }
+
+    /**
+     * Acepta el inicio de sesión web con la cuenta activa e inyecta la asistencia en la página actual.
+     */
+    fun acceptWebSignInPrompt(account: UserAccountEntity) {
+        _webSignInPrompt.value = null
+        val script = WebSignInBridge.generateAutoSignInScript(account)
+        engineController?.evaluateJavascript(script)
+    }
+
+    /**
+     * Descarta el prompt visual de inicio de sesión web asistido.
+     */
+    fun dismissWebSignInPrompt() {
+        _webSignInPrompt.value = null
     }
 }

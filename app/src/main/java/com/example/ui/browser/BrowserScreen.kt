@@ -6,15 +6,23 @@ import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,6 +34,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
@@ -86,6 +95,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.browser.engine.GeckoViewEngine
 import com.example.ui.components.WebPromptDialog
+import com.example.ui.components.WebSignInPromptBanner
 import com.example.viewmodel.BrowserViewModel
 import org.mozilla.geckoview.GeckoView
 
@@ -94,7 +104,7 @@ import org.mozilla.geckoview.GeckoView
  * Integra la barra de direcciones superior (Omnibox), el motor de renderizado independiente
  * Mozilla GeckoView y la barra de herramientas de navegación inferior.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun BrowserScreen(
     viewModel: BrowserViewModel,
@@ -103,10 +113,13 @@ fun BrowserScreen(
     onNavigateToHistory: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToDownloads: () -> Unit,
-    onNavigateToCookies: () -> Unit = {}
+    onNavigateToCookies: () -> Unit = {},
+    onNavigateToAccounts: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+
+    val isImeVisible = WindowInsets.isImeVisible
 
     val pageState by viewModel.pageState.collectAsState()
     val omniboxText by viewModel.omniboxText.collectAsState()
@@ -123,6 +136,7 @@ fun BrowserScreen(
     val activeTab by viewModel.activeTab.collectAsState()
     val isDesktopDefault by viewModel.isDesktopModeDefault.collectAsState()
     val activeWebPrompt by viewModel.activeWebPrompt.collectAsState()
+    val webSignInPrompt by viewModel.webSignInPrompt.collectAsState()
 
     val currentTabsCount = when {
         isProtected -> protectedTabs.size
@@ -171,6 +185,9 @@ fun BrowserScreen(
     val isHome = pageState.url == "about:home" || pageState.url.isBlank() || pageState.url == "about:blank"
 
     Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding(),
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 TopAppBar(
@@ -369,6 +386,16 @@ fun BrowserScreen(
                             }
 
                             DropdownMenuItem(
+                                text = { Text("Cuentas y acceso web") },
+                                leadingIcon = { Icon(Icons.Default.AccountCircle, contentDescription = null) },
+                                onClick = {
+                                    isMenuExpanded = false
+                                    onNavigateToAccounts()
+                                },
+                                modifier = Modifier.testTag("menu_accounts")
+                            )
+
+                            DropdownMenuItem(
                                 text = { Text("Ajustes") },
                                 leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
                                 onClick = {
@@ -402,95 +429,101 @@ fun BrowserScreen(
             }
         },
         bottomBar = {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp
+            AnimatedVisibility(
+                visible = !isImeVisible,
+                enter = fadeIn() + slideInVertically { it },
+                exit = fadeOut() + slideOutVertically { it }
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .height(56.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 6.dp
                 ) {
-                    // Botón Atrás
-                    IconButton(
-                        onClick = { viewModel.engineController?.goBack() },
-                        enabled = pageState.canGoBack,
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .testTag("bottom_back_button")
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .height(56.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Atrás",
-                            tint = if (pageState.canGoBack) MaterialTheme.colorScheme.onSurface
-                                   else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                        )
-                    }
-
-                    // Botón Adelante
-                    IconButton(
-                        onClick = { viewModel.engineController?.goForward() },
-                        enabled = pageState.canGoForward,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("bottom_forward_button")
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = "Adelante",
-                            tint = if (pageState.canGoForward) MaterialTheme.colorScheme.onSurface
-                                   else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                        )
-                    }
-
-                    // Botón Inicio
-                    IconButton(
-                        onClick = { viewModel.navigateToHome() },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("bottom_home_button")
-                    ) {
-                        Icon(
-                            Icons.Default.Home,
-                            contentDescription = "Inicio",
-                            tint = if (isHome) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    // Botón Marcadores
-                    IconButton(
-                        onClick = onNavigateToBookmarks,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("bottom_bookmarks_button")
-                    ) {
-                        Icon(Icons.Default.Bookmark, contentDescription = "Marcadores")
-                    }
-
-                    // Botón Gestor de Pestañas
-                    IconButton(
-                        onClick = onNavigateToTabs,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("bottom_tabs_button")
-                    ) {
-                        BadgedBox(
-                            badge = {
-                                Badge(
-                                    containerColor = when {
-                                        isProtected -> emeraldColor
-                                        isIncognito -> MaterialTheme.colorScheme.tertiary
-                                        else -> MaterialTheme.colorScheme.primary
-                                    }
-                                ) {
-                                    Text(text = "$currentTabsCount", fontSize = 10.sp)
-                                }
-                            }
+                        // Botón Atrás
+                        IconButton(
+                            onClick = { viewModel.engineController?.goBack() },
+                            enabled = pageState.canGoBack,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("bottom_back_button")
                         ) {
-                            Icon(Icons.Default.Tab, contentDescription = "Pestañas")
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Atrás",
+                                tint = if (pageState.canGoBack) MaterialTheme.colorScheme.onSurface
+                                       else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            )
+                        }
+
+                        // Botón Adelante
+                        IconButton(
+                            onClick = { viewModel.engineController?.goForward() },
+                            enabled = pageState.canGoForward,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("bottom_forward_button")
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "Adelante",
+                                tint = if (pageState.canGoForward) MaterialTheme.colorScheme.onSurface
+                                       else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            )
+                        }
+
+                        // Botón Inicio
+                        IconButton(
+                            onClick = { viewModel.navigateToHome() },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("bottom_home_button")
+                        ) {
+                            Icon(
+                                Icons.Default.Home,
+                                contentDescription = "Inicio",
+                                tint = if (isHome) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        // Botón Marcadores
+                        IconButton(
+                            onClick = onNavigateToBookmarks,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("bottom_bookmarks_button")
+                        ) {
+                            Icon(Icons.Default.Bookmark, contentDescription = "Marcadores")
+                        }
+
+                        // Botón Gestor de Pestañas
+                        IconButton(
+                            onClick = onNavigateToTabs,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("bottom_tabs_button")
+                        ) {
+                            BadgedBox(
+                                badge = {
+                                    Badge(
+                                        containerColor = when {
+                                            isProtected -> emeraldColor
+                                            isIncognito -> MaterialTheme.colorScheme.tertiary
+                                            else -> MaterialTheme.colorScheme.primary
+                                        }
+                                    ) {
+                                        Text(text = "$currentTabsCount", fontSize = 10.sp)
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Default.Tab, contentDescription = "Pestañas")
+                            }
                         }
                     }
                 }
@@ -523,6 +556,14 @@ fun BrowserScreen(
                         .testTag("browser_geckoview")
                 )
             }
+
+            // Banner flotante de inicio de sesión web con un solo toque (Google One-Tap / FedCM)
+            WebSignInPromptBanner(
+                prompt = webSignInPrompt,
+                onAccept = { account -> viewModel.acceptWebSignInPrompt(account) },
+                onDismiss = { viewModel.dismissWebSignInPrompt() },
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
         }
 
         // Diálogos web interactivos (Alerts, Prompts, Confirms, HTTP Auth, Selector de archivos)

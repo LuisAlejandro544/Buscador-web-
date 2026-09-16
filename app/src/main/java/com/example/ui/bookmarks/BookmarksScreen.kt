@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -66,7 +67,8 @@ import java.util.Locale
 @Composable
 fun BookmarksScreen(
     viewModel: BrowserViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val bookmarks by viewModel.bookmarks.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
@@ -84,6 +86,10 @@ fun BookmarksScreen(
     }
 
     Scaffold(
+        modifier = modifier
+            .fillMaxSize()
+            .imePadding()
+            .testTag("bookmarks_screen"),
         topBar = {
             TopAppBar(
                 title = {

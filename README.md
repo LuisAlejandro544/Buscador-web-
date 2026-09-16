@@ -56,10 +56,18 @@ Navegador web moderno, modular y extensible para dispositivos Android (Android 1
 - Búsqueda instantánea por dominio o palabras clave.
 - Limpieza individual de elementos o borrado completo de historial y caché.
 
+### 👤 Gestión de Cuentas e Inicio de Sesión Web con un Toque
+- **Vinculación de Cuentas:** Vincula tu cuenta de Google o cuenta personalizada directamente en la aplicación mediante `androidx.credentials` (`CredentialManager` y Google ID) de forma segura y nativa.
+- **Detección Automática de Páginas de Autenticación (`WebSignInBridge`):** Al navegar por sitios web que cuenten con formularios de inicio de sesión o botones de "Iniciar sesión con Google", el navegador reconoce el contexto de autenticación en tiempo real.
+- **Banner Flotante Interactivo (`WebSignInPromptBanner`):** Muestra un banner superior en Compose estilo One-Tap para acceder con la cuenta activa ("Continuar como [Nombre]").
+- **Inyección y Autocompletado en GeckoView:** Al aceptar el banner, se evalúa JavaScript en la sesión activa de GeckoView para rellenar campos de usuario/correo o pulsar selectores estándar de Google Sign-In sin tener que teclear.
+- **Pantalla Dedicada de Cuentas (`AccountsScreen`):** Administra múltiples perfiles, conmuta la cuenta activa, añade cuentas nuevas con un toque o elimina cuentas obsoletas con facilidad.
+
 ### ⚙️ Ajustes y Personalización
 - Selector de motores de búsqueda predeterminados: DuckDuckGo, Google, Bing, Brave y Ecosia.
 - Configuración de página de inicio personalizada o pantalla de inicio nativa (`about:home`).
 - Control reactivo de privacidad, cookies y borrado completo de datos de navegación.
+- Acceso directo a la configuración de Cuentas e Identidad Web.
 
 ---
 
@@ -71,7 +79,8 @@ Navegador web moderno, modular y extensible para dispositivos Android (Android 1
 | **Interfaz de Usuario** | Jetpack Compose + Material Design 3 | UI declarativa, temas adaptativos y componentes dinámicos |
 | **Capa Nativa (C++)** | C++26 / C23 (NDK r28 LTS, CMake 3.31+) | Puente JNI `browser_native`, hashing y aceleración nativa por hardware |
 | **Capa Nativa (Rust)** | Rust Edition 2024 (`core-native`) | Infraestructura base para filtrado de red de alto rendimiento, hashes y seguridad |
-| **Persistencia Local** | Android Room Database v4 (SQLite) + DataStore | Almacenamiento reactivo de pestañas, historial, marcadores, descargas y cookies de navegación |
+| **Persistencia Local** | Android Room Database v4 (SQLite) + DataStore | Almacenamiento reactivo de pestañas, historial, marcadores, descargas, cookies y cuentas de usuario |
+| **Gestión de Identidad** | AndroidX Credential Manager + Google ID | Vinculación nativa de cuentas e inyección de sesiones web (`WebSignInBridge`) |
 | **Motor Web** | GeckoView Omni (Mozilla) / Android WebView | Motor web potente, extensible y personalizable |
 | **Arquitectura** | MVVM + Clean Architecture + StateFlow | Desacoplamiento de capas y flujo de datos unidireccional (UDF) |
 | **Navegación** | Jetpack Navigation Compose | Enrutamiento desacoplado entre pantallas dedicadas |

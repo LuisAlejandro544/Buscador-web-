@@ -53,10 +53,12 @@ Este documento traza las fases de desarrollo, hitos completados y objetivos futu
   - **Purga Inmediata de Memoria RAM al Cerrar:** Destrucción y limpieza forzada de cachés volátiles (`ALL_CACHES`, `AUTH_SESSIONS`), eliminación de miniaturas y recolección de basura con `System.gc()`.
   - **Protección de Pantalla FLAG_SECURE:** Bloqueo de capturas de pantalla y ofuscación en la multitarea de Android durante la navegación anónima.
 - [x] **Flujo de Integración Continua (CI) y Entrega Directa P2P:** Workflow en GitHub Actions (`.github/workflows/build-debug.yml`) con activación exclusivamente manual (`workflow_dispatch`), compilación limpia sin caché (NDK 28, CMake 3.31, Rust 2024, GeckoView Omni), generación forzada de firma con `generate_debug_keystore.sh` y sincronización directa P2P desatendida mediante Syncthing a la carpeta `/storage/emulated/0/Navegador/app-debug.apk` del móvil.
+- [x] **Gestión de Cuentas e Identidad Web Integrada (Google One-Tap):** Vinculación nativa de cuentas de Google y credenciales federadas con AndroidX `CredentialManager`, persistencia local en Room (`UserAccountEntity`, `UserAccountDao`), detección contextual de páginas de autenticación en vivo con `WebSignInBridge`, banner superior interactivo en Compose (`WebSignInPromptBanner`), autocompletado e inyección en GeckoView y pantalla dedicada multicuenta (`AccountsScreen`).
 
 ---
 
 ### 🔵 Fase 3: Capacidades Avanzadas de Navegación, Privacidad y Lógica Rust (Siguiente)
+- [ ] **Expansión del Sistema de Cuentas:** Sincronización local/cifrada opcional de marcadores y preferencias vinculadas al perfil activo, y gestor integrado de contraseñas web.
 - [ ] **Expansión Continua de Seguridad en Modo Incógnito:**
   - Incorporación de muchas más funciones de seguridad para que el modo incógnito no sea genérico: bloqueo heurístico de telemetría oculta en scripts, sandbox estricto de APIs de sensores (giroscopio, acelerómetro, batería), y rotación dinámica de identidades virtuales.
   - Generación de informe de rastreo en tiempo real para verificar qué elementos intentaron perfilar al usuario y fueron neutralizados.

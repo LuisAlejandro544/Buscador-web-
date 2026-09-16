@@ -9,6 +9,7 @@ import androidx.room.PrimaryKey
  * @property id Identificador único del registro de historial
  * @property title Título de la página web visitada
  * @property url Dirección web visitada
+ * @property faviconUrl URL del icono o favicon representativo de la página web
  * @property visitedAt Marca de tiempo de la visita (milisegundos)
  */
 @Entity(tableName = "history")
@@ -17,5 +18,6 @@ data class HistoryEntity(
     val id: Long = 0,
     val title: String,
     val url: String,
+    val faviconUrl: String? = null,
     val visitedAt: Long = System.currentTimeMillis()
 )
