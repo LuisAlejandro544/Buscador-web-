@@ -1,6 +1,7 @@
 package com.example.browser.account
 
 import com.example.data.local.entity.UserAccountEntity
+import org.json.JSONObject
 import java.net.URI
 
 /**
@@ -22,34 +23,53 @@ data class WebSignInPrompt(
  * Puente de enlace e integración entre las cuentas del navegador y los sitios web.
  * 
  * Detecta solicitudes de login federado (como Google One-Tap o páginas de autenticación),
- * prepara la sugerencia nativa para el usuario y genera scripts para completar
+ * prepara la sugerencia nativa para el usuario y genera scripts seguros para completar
  * el inicio de sesión sin necesidad de ingresar contraseñas manualmente.
  */
 object WebSignInBridge {
 
     /**
-     * Lista de palabras clave o dominios reconocidos que típicamente contienen
-     * botones de "Iniciar sesión con Google" o flujos de inicio de sesión web.
+     * Proveedores de identidad verificados y rutas de autenticación reconocidas.
      */
-    private val authPatterns = listOf(
+    private val trustedAuthHosts = listOf(
         "accounts.google.com",
-        "login",
-        "signin",
-        "sign-in",
-        "auth",
-        "oauth",
-        "session",
-        "entrar",
-        "iniciar-sesion"
+        "login.microsoftonline.com",
+        "appleid.apple.com",
+        "github.com"
+    )
+
+    private val authPathSegments = listOf(
+        "/login",
+        "/signin",
+        "/sign-in",
+        "/oauth",
+        "/auth",
+        "/session",
+        "/iniciar-sesion"
     )
 
     /**
-     * Evalúa si una URL corresponde a una página de acceso o flujo de autenticación.
+     * Evalúa si una URL corresponde legítimamente a una página de acceso o autenticación.
+     * Exige estrictamente HTTPS para prevenir robo de identidad en conexiones inseguras.
      */
     fun isAuthPage(url: String): Boolean {
-        if (url.isBlank() || url.startsWith("about:")) return false
-        val lower = url.lowercase()
-        return authPatterns.any { pattern -> lower.contains(pattern) }
+        if (url.isBlank() || !url.startsWith("https://", ignoreCase = true)) return false
+
+        return try {
+            val uri = URI(url)
+            val host = uri.host?.lowercase() ?: return false
+            val path = uri.path?.lowercase() ?: ""
+
+            // 1. Coincidencia directa con proveedores de identidad reconocidos
+            if (trustedAuthHosts.any { host == it || host.endsWith(".$it") }) {
+                return true
+            }
+
+            // 2. Coincidencia en segmentos de ruta de autenticación explícitos (no en parámetros de búsqueda)
+            authPathSegments.any { path.contains(it) }
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /**
@@ -73,16 +93,18 @@ object WebSignInBridge {
             domain = domain,
             url = url,
             account = account,
-            title = "Iniciar sesión en $domain como ${account.displayName}"
+            title = "¿Completar acceso en $domain como ${account.displayName}?"
         )
     }
 
     /**
-     * Genera un script JavaScript ligero y no intrusivo que asiste al inicio de sesión
-     * buscando campos estándar de email o activando botones de Google One-Tap si están presentes.
+     * Genera un script JavaScript sanitizado mediante JSONObject.quote() para evitar
+     * inyecciones de código (XSS) y proteger los datos del usuario en formularios web.
      */
     fun generateAutoSignInScript(account: UserAccountEntity): String {
-        val safeEmail = account.email.replace("'", "\\'")
+        // Sanitización rigurosa de cadenas mediante JSON estándar
+        val quotedEmail = JSONObject.quote(account.email)
+
         return """
             (function() {
                 try {
@@ -99,7 +121,7 @@ object WebSignInBridge {
                     for (const selector of emailSelectors) {
                         const input = document.querySelector(selector);
                         if (input && !input.value) {
-                            input.value = '$safeEmail';
+                            input.value = $quotedEmail;
                             input.dispatchEvent(new Event('input', { bubbles: true }));
                             input.dispatchEvent(new Event('change', { bubbles: true }));
                             break;

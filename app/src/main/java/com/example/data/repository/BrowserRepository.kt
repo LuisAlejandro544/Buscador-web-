@@ -4,12 +4,14 @@ import com.example.data.local.dao.BookmarkDao
 import com.example.data.local.dao.CookieDao
 import com.example.data.local.dao.DownloadDao
 import com.example.data.local.dao.HistoryDao
+import com.example.data.local.dao.SitePermissionDao
 import com.example.data.local.dao.TabDao
 import com.example.data.local.dao.UserAccountDao
 import com.example.data.local.entity.BookmarkEntity
 import com.example.data.local.entity.CookieEntity
 import com.example.data.local.entity.DownloadEntity
 import com.example.data.local.entity.HistoryEntity
+import com.example.data.local.entity.SitePermissionEntity
 import com.example.data.local.entity.TabEntity
 import com.example.data.local.entity.UserAccountEntity
 import com.example.data.model.SearchEngine
@@ -28,6 +30,7 @@ class BrowserRepository(
     private val downloadDao: DownloadDao,
     private val cookieDao: CookieDao,
     private val userAccountDao: UserAccountDao,
+    private val sitePermissionDao: SitePermissionDao,
     private val preferences: BrowserPreferences
 ) {
     // --- Pestañas ---
@@ -205,6 +208,36 @@ class BrowserRepository(
 
     suspend fun clearAllAccounts() = userAccountDao.clearAllAccounts()
 
+    // --- Permisos por Sitio Web ---
+    fun getAllSitePermissions(): Flow<List<SitePermissionEntity>> = sitePermissionDao.getAllPermissions()
+
+    fun getSitePermissionsForOrigin(origin: String): Flow<List<SitePermissionEntity>> = sitePermissionDao.getPermissionsForOrigin(origin)
+
+    suspend fun findSitePermission(origin: String, type: String): SitePermissionEntity? = sitePermissionDao.findPermission(origin, type)
+
+    fun findSitePermissionSync(origin: String, type: String): SitePermissionEntity? = sitePermissionDao.findPermissionSync(origin, type)
+
+    suspend fun saveSitePermission(origin: String, permissionType: String, status: String): Long {
+        return sitePermissionDao.insertOrUpdate(
+            SitePermissionEntity(
+                origin = origin,
+                permissionType = permissionType,
+                status = status,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun updateSitePermissionStatus(id: Long, status: String) {
+        sitePermissionDao.updateStatus(id, status, System.currentTimeMillis())
+    }
+
+    suspend fun deleteSitePermission(id: Long) = sitePermissionDao.deleteById(id)
+
+    suspend fun deleteSitePermissionsForOrigin(origin: String) = sitePermissionDao.deleteByOrigin(origin)
+
+    suspend fun clearAllSitePermissions() = sitePermissionDao.clearAll()
+
     // --- Preferencias y Ajustes ---
     val searchEngine: Flow<SearchEngine> = preferences.searchEngine
     val isDesktopModeDefault: Flow<Boolean> = preferences.isDesktopModeDefault
@@ -213,10 +246,21 @@ class BrowserRepository(
     val isDoNotTrackEnabled: Flow<Boolean> = preferences.isDoNotTrackEnabled
     val homePageUrl: Flow<String> = preferences.homePageUrl
 
+    // Políticas de Bloqueo Silencioso ("No Preguntar")
+    val blockNotificationPrompts: Flow<Boolean> = preferences.blockNotificationPrompts
+    val blockLocationPrompts: Flow<Boolean> = preferences.blockLocationPrompts
+    val blockMediaPrompts: Flow<Boolean> = preferences.blockMediaPrompts
+    val isSoundEffectsEnabled: Flow<Boolean> = preferences.isSoundEffectsEnabled
+
     suspend fun setSearchEngine(engine: SearchEngine) = preferences.setSearchEngine(engine)
     suspend fun setDesktopModeDefault(enabled: Boolean) = preferences.setDesktopModeDefault(enabled)
     suspend fun setJavaScriptEnabled(enabled: Boolean) = preferences.setJavaScriptEnabled(enabled)
     suspend fun setCookiesEnabled(enabled: Boolean) = preferences.setCookiesEnabled(enabled)
     suspend fun setDoNotTrack(enabled: Boolean) = preferences.setDoNotTrack(enabled)
     suspend fun setHomePageUrl(url: String) = preferences.setHomePageUrl(url)
+
+    suspend fun setBlockNotificationPrompts(enabled: Boolean) = preferences.setBlockNotificationPrompts(enabled)
+    suspend fun setBlockLocationPrompts(enabled: Boolean) = preferences.setBlockLocationPrompts(enabled)
+    suspend fun setBlockMediaPrompts(enabled: Boolean) = preferences.setBlockMediaPrompts(enabled)
+    suspend fun setSoundEffectsEnabled(enabled: Boolean) = preferences.setSoundEffectsEnabled(enabled)
 }

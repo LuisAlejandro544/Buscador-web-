@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
+import com.example.data.local.entity.SitePermissionEntity
 import com.example.viewmodel.BrowserViewModel
 import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.GeckoResult
@@ -75,24 +76,67 @@ class GeckoViewEngine(
                 request: GeckoSession.NavigationDelegate.LoadRequest
             ): GeckoResult<AllowOrDeny>? {
                 val uriString = request.uri
-                // Manejo de esquemas nativos y externos (mailto, tel, intent, app links)
-                if (!uriString.startsWith("http://") &&
-                    !uriString.startsWith("https://") &&
-                    !uriString.startsWith("about:") &&
-                    !uriString.startsWith("javascript:") &&
-                    !uriString.startsWith("data:")
+
+                // 1. Bloqueo estricto de esquemas de archivos locales y proveedores de contenido desde la web
+                if (uriString.startsWith("file:", ignoreCase = true) ||
+                    uriString.startsWith("content:", ignoreCase = true)
                 ) {
-                    try {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uriString)).apply {
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                        }
-                        context.startActivity(intent)
-                        return GeckoResult.fromValue(AllowOrDeny.DENY)
-                    } catch (e: Exception) {
-                        return GeckoResult.fromValue(AllowOrDeny.DENY)
-                    }
+                    return GeckoResult.fromValue(AllowOrDeny.DENY)
                 }
-                return GeckoResult.fromValue(AllowOrDeny.ALLOW)
+
+                // 2. Permitir protocolos web estándar y recursos embebidos
+                if (uriString.startsWith("http://", ignoreCase = true) ||
+                    uriString.startsWith("https://", ignoreCase = true) ||
+                    uriString.startsWith("about:", ignoreCase = true) ||
+                    uriString.startsWith("javascript:", ignoreCase = true) ||
+                    uriString.startsWith("data:", ignoreCase = true)
+                ) {
+                    return GeckoResult.fromValue(AllowOrDeny.ALLOW)
+                }
+
+                // 3. Manejo seguro y sanitizado del esquema intent://
+                if (uriString.startsWith("intent:", ignoreCase = true)) {
+                    try {
+                        val parsedIntent = Intent.parseUri(uriString, Intent.URI_INTENT_SCHEME)
+                        // Sanitización crítica: neutralizar componentes internos, selectores y forzar navegabilidad
+                        parsedIntent.addCategory(Intent.CATEGORY_BROWSABLE)
+                        parsedIntent.component = null
+                        parsedIntent.selector = null
+
+                        // Bloquear cualquier intento de llamar a componentes del propio paquete del navegador
+                        if (parsedIntent.`package` == context.packageName) {
+                            return GeckoResult.fromValue(AllowOrDeny.DENY)
+                        }
+
+                        if (context.packageManager.resolveActivity(parsedIntent, 0) != null) {
+                            parsedIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            context.startActivity(parsedIntent)
+                        }
+                    } catch (_: Exception) {
+                        // Denegar en caso de esquema inválido o excepción
+                    }
+                    return GeckoResult.fromValue(AllowOrDeny.DENY)
+                }
+
+                // 4. Manejo de esquemas externos conocidos y seguros (mailto, tel, sms, geo, market)
+                try {
+                    val parsedUri = Uri.parse(uriString)
+                    val scheme = parsedUri.scheme?.lowercase()
+                    val safeSchemes = setOf("mailto", "tel", "sms", "geo", "market")
+                    if (scheme in safeSchemes) {
+                        val externalIntent = Intent(Intent.ACTION_VIEW, parsedUri).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            addCategory(Intent.CATEGORY_BROWSABLE)
+                        }
+                        if (context.packageManager.resolveActivity(externalIntent, 0) != null) {
+                            context.startActivity(externalIntent)
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Ignorar esquemas desconocidos o corruptos
+                }
+
+                return GeckoResult.fromValue(AllowOrDeny.DENY)
             }
 
             override fun onNewSession(
@@ -158,7 +202,7 @@ class GeckoViewEngine(
         // 4. Delegado de Diálogos Web: Alertas JS, confirmaciones, prompts y selector de archivos
         session.promptDelegate = GeckoPromptHandler(context, viewModel)
 
-        // 5. Delegado de Permisos: Bloqueo estricto de WebRTC y sensores en modo incógnito (Anti IP-Leak)
+        // 5. Delegado de Permisos: Control granular persistente por sitio y políticas de bloqueo silencioso
         session.permissionDelegate = object : GeckoSession.PermissionDelegate {
             override fun onMediaPermissionRequest(
                 s: GeckoSession,
@@ -168,18 +212,173 @@ class GeckoViewEngine(
                 callback: GeckoSession.PermissionDelegate.MediaCallback
             ) {
                 // Denegar estrictamente en incógnito para neutralizar fugas de IP por WebRTC
-                callback.reject()
+                if (s.settings.usePrivateMode) {
+                    callback.reject()
+                    return
+                }
+
+                // Extraer el dominio base u origen limpio
+                val origin = try {
+                    val parsed = Uri.parse(uri)
+                    val host = parsed.host
+                    if (!host.isNullOrBlank()) "${parsed.scheme ?: "https"}://$host" else uri
+                } catch (_: Throwable) {
+                    uri
+                }
+
+                // 1. Verificar política de bloqueo silencioso para multimedia
+                if (viewModel.blockMediaPrompts.value) {
+                    callback.reject()
+                    return
+                }
+
+                val hasVideo = !video.isNullOrEmpty()
+                val hasAudio = !audio.isNullOrEmpty()
+
+                // 2. Comprobar permisos persistentes almacenados en la base de datos
+                val videoPerm = if (hasVideo) viewModel.findSitePermissionSync(origin, SitePermissionEntity.PERMISSION_CAMERA) else null
+                val audioPerm = if (hasAudio) viewModel.findSitePermissionSync(origin, SitePermissionEntity.PERMISSION_MICROPHONE) else null
+
+                // Si alguno está explícitamente bloqueado, rechazar
+                if ((hasVideo && videoPerm?.status == SitePermissionEntity.STATUS_DENIED) ||
+                    (hasAudio && audioPerm?.status == SitePermissionEntity.STATUS_DENIED)
+                ) {
+                    callback.reject()
+                    return
+                }
+
+                // Si ambos están permitidos explícitamente, conceder de inmediato
+                val isVideoSatisfied = !hasVideo || videoPerm?.status == SitePermissionEntity.STATUS_GRANTED
+                val isAudioSatisfied = !hasAudio || audioPerm?.status == SitePermissionEntity.STATUS_GRANTED
+                if (isVideoSatisfied && isAudioSatisfied && (videoPerm != null || audioPerm != null)) {
+                    callback.grant(video?.firstOrNull(), audio?.firstOrNull())
+                    return
+                }
+
+                // 3. No decidido previamente: Mostrar diálogo interactivo nativo al usuario
+                val permType = if (hasVideo && hasAudio) {
+                    SitePermissionEntity.PERMISSION_CAMERA
+                } else if (hasVideo) {
+                    SitePermissionEntity.PERMISSION_CAMERA
+                } else {
+                    SitePermissionEntity.PERMISSION_MICROPHONE
+                }
+
+                val mediaLabel = if (hasVideo && hasAudio) {
+                    "la cámara y el micrófono"
+                } else if (hasVideo) {
+                    "la cámara"
+                } else {
+                    "el micrófono"
+                }
+
+                viewModel.postWebPrompt(
+                    WebPromptRequest.Permission(
+                        origin = origin,
+                        permissionType = permType,
+                        title = "Permiso de multimedia",
+                        message = "El sitio \"$origin\" solicita acceso a $mediaLabel.",
+                        onGrant = { remember ->
+                            if (remember) {
+                                if (hasVideo) viewModel.saveSitePermission(origin, SitePermissionEntity.PERMISSION_CAMERA, SitePermissionEntity.STATUS_GRANTED)
+                                if (hasAudio) viewModel.saveSitePermission(origin, SitePermissionEntity.PERMISSION_MICROPHONE, SitePermissionEntity.STATUS_GRANTED)
+                            }
+                            callback.grant(video?.firstOrNull(), audio?.firstOrNull())
+                            viewModel.dismissWebPrompt()
+                        },
+                        onDeny = { remember ->
+                            if (remember) {
+                                if (hasVideo) viewModel.saveSitePermission(origin, SitePermissionEntity.PERMISSION_CAMERA, SitePermissionEntity.STATUS_DENIED)
+                                if (hasAudio) viewModel.saveSitePermission(origin, SitePermissionEntity.PERMISSION_MICROPHONE, SitePermissionEntity.STATUS_DENIED)
+                            }
+                            callback.reject()
+                            viewModel.dismissWebPrompt()
+                        }
+                    )
+                )
             }
 
             override fun onContentPermissionRequest(
                 s: GeckoSession,
                 perm: GeckoSession.PermissionDelegate.ContentPermission
             ): GeckoResult<Int>? {
-                if (s.settings.usePrivateMode) {
+                if (s.settings.usePrivateMode || perm.privateMode) {
                     // Rechazar geolocalización, notificaciones y persistencia en incógnito
                     return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
                 }
-                return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT)
+
+                val origin = try {
+                    val parsed = Uri.parse(perm.uri)
+                    val host = parsed.host
+                    if (!host.isNullOrBlank()) "${parsed.scheme ?: "https"}://$host" else perm.uri
+                } catch (_: Throwable) {
+                    perm.uri
+                }
+
+                // Mapear el tipo de permiso de GeckoView a nuestro modelo de datos
+                val permType = when (perm.permission) {
+                    GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION -> SitePermissionEntity.PERMISSION_NOTIFICATION
+                    GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION -> SitePermissionEntity.PERMISSION_GEOLOCATION
+                    GeckoSession.PermissionDelegate.PERMISSION_PERSISTENT_STORAGE -> SitePermissionEntity.PERMISSION_STORAGE
+                    else -> "CONTENT_PERMISSION_${perm.permission}"
+                }
+
+                // 1. Políticas de bloqueo silencioso ("No Preguntar")
+                if (perm.permission == GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION &&
+                    viewModel.blockNotificationPrompts.value
+                ) {
+                    return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
+                }
+
+                if (perm.permission == GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION &&
+                    viewModel.blockLocationPrompts.value
+                ) {
+                    return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
+                }
+
+                // 2. Verificar decisión previa almacenada en Room
+                val existing = viewModel.findSitePermissionSync(origin, permType)
+                if (existing != null) {
+                    return if (existing.status == SitePermissionEntity.STATUS_GRANTED) {
+                        GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW)
+                    } else {
+                        GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
+                    }
+                }
+
+                // 3. No decidido: Mostrar diálogo de solicitud interactivo
+                val result = GeckoResult<Int>()
+                val permDescription = when (perm.permission) {
+                    GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION -> "enviarte notificaciones web"
+                    GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION -> "conocer tu ubicación geográfica"
+                    GeckoSession.PermissionDelegate.PERMISSION_PERSISTENT_STORAGE -> "usar almacenamiento persistente en el dispositivo"
+                    else -> "acceder a funciones del dispositivo"
+                }
+
+                viewModel.postWebPrompt(
+                    WebPromptRequest.Permission(
+                        origin = origin,
+                        permissionType = permType,
+                        title = "Solicitud de permiso",
+                        message = "El sitio \"$origin\" solicita permiso para $permDescription.",
+                        onGrant = { remember ->
+                            if (remember) {
+                                viewModel.saveSitePermission(origin, permType, SitePermissionEntity.STATUS_GRANTED)
+                            }
+                            result.complete(GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW)
+                            viewModel.dismissWebPrompt()
+                        },
+                        onDeny = { remember ->
+                            if (remember) {
+                                viewModel.saveSitePermission(origin, permType, SitePermissionEntity.STATUS_DENIED)
+                            }
+                            result.complete(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
+                            viewModel.dismissWebPrompt()
+                        }
+                    )
+                )
+
+                return result
             }
         }
     }

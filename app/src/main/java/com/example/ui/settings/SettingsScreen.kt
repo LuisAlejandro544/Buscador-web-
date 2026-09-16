@@ -27,9 +27,11 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Javascript
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -57,6 +59,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.browser.sound.SoundEffectManager
 import com.example.data.model.SearchEngine
 import com.example.viewmodel.BrowserViewModel
 
@@ -71,7 +74,8 @@ fun SettingsScreen(
     viewModel: BrowserViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToCookies: () -> Unit = {},
-    onNavigateToAccounts: () -> Unit = {}
+    onNavigateToAccounts: () -> Unit = {},
+    onNavigateToSitePermissions: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -83,6 +87,7 @@ fun SettingsScreen(
     val homePageUrl by viewModel.homePageUrl.collectAsState()
     val activeAccount by viewModel.activeAccount.collectAsState()
     val accountsCount by viewModel.accountsCount.collectAsState()
+    val isSoundEffectsEnabled by viewModel.isSoundEffectsEnabled.collectAsState()
 
     var showSearchEngineDialog by remember { mutableStateOf(false) }
     var showHomeUrlDialog by remember { mutableStateOf(false) }
@@ -310,6 +315,26 @@ fun SettingsScreen(
 
                     HorizontalDivider()
 
+                    // Permisos por Sitio Web y Bloqueo Silencioso
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigateToSitePermissions() }
+                            .padding(vertical = 10.dp)
+                            .testTag("setting_site_permissions_row"),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Permisos por sitio web", fontWeight = FontWeight.Medium)
+                            Text("Cámara, micro, GPS y silenciar solicitudes", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+
+                    HorizontalDivider()
+
                     // Do Not Track
                     Row(
                         modifier = Modifier
@@ -347,6 +372,70 @@ fun SettingsScreen(
                             Text("Limpiar datos de navegación", fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.error)
                             Text("Borra caché, historial y cookies", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                    }
+                }
+            }
+
+            // Sección Sonidos y Notificaciones
+            Text(
+                text = "Sonidos y Notificaciones",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Activar / Desactivar efectos de sonido
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.VolumeUp, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Efectos de sonido", fontWeight = FontWeight.Medium)
+                            Text("Tonos en descargas y avisos clave", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = isSoundEffectsEnabled,
+                            onCheckedChange = { viewModel.setSoundEffectsEnabled(it) },
+                            modifier = Modifier.testTag("setting_sound_effects_switch")
+                        )
+                    }
+
+                    if (isSoundEffectsEnabled) {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+
+                        // Probar sonido aleatorio
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    SoundEffectManager.playRandomDownloadSuccess(context)
+                                    Toast.makeText(context, "Reproduciendo tono aleatorio de descarga", Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(vertical = 8.dp)
+                                .testTag("setting_test_sound_row"),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Probar tono aleatorio de descarga", fontWeight = FontWeight.Medium)
+                                Text("6 variantes de logro para descargas finalizadas", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "ℹ️ Próximamente se integrarán más sonidos personalizables para marcadores, cierre de pestañas y alertas de seguridad.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }

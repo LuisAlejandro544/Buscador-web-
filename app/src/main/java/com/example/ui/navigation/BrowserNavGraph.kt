@@ -11,6 +11,7 @@ import com.example.ui.browser.BrowserScreen
 import com.example.ui.cookies.CookiesScreen
 import com.example.ui.downloads.DownloadsScreen
 import com.example.ui.history.HistoryScreen
+import com.example.ui.permissions.SitePermissionsScreen
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.tabs.TabsScreen
 import com.example.viewmodel.BrowserViewModel
@@ -18,7 +19,7 @@ import com.example.viewmodel.BrowserViewModel
 /**
  * Grafo de navegación principal de la aplicación del navegador web.
  * Administra el enrutamiento desacoplado entre las distintas pantallas:
- * Navegador, Pestañas, Marcadores, Historial, Descargas, Cookies de navegación, Ajustes y Cuentas.
+ * Navegador, Pestañas, Marcadores, Historial, Descargas, Cookies de navegación, Ajustes, Cuentas y Permisos por Sitio.
  */
 @Composable
 fun BrowserNavGraph(
@@ -84,12 +85,20 @@ fun BrowserNavGraph(
             )
         }
 
+        composable(Screen.SitePermissions.route) {
+            SitePermissionsScreen(
+                viewModel = viewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
         composable(Screen.Settings.route) {
             SettingsScreen(
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToCookies = { navController.navigate(Screen.Cookies.route) },
-                onNavigateToAccounts = { navController.navigate(Screen.Accounts.route) }
+                onNavigateToAccounts = { navController.navigate(Screen.Accounts.route) },
+                onNavigateToSitePermissions = { navController.navigate(Screen.SitePermissions.route) }
             )
         }
     }

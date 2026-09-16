@@ -54,3 +54,11 @@ Cargo.lock.bak
 bindings/generated/
 UniFFI/generated/
 
+# ==============================================================================
+# Claves Criptográficas y Certificados Privados
+# ==============================================================================
+*.pem
+*.key
+.github/syncthing/*.pem
+
+

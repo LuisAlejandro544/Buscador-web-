@@ -7,19 +7,23 @@ import androidx.lifecycle.viewModelScope
 import com.example.browser.account.AccountCredentialManager
 import com.example.browser.account.WebSignInBridge
 import com.example.browser.account.WebSignInPrompt
+import com.example.browser.download.DownloadEngine
 import com.example.browser.download.DownloadManagerHelper
+import com.example.browser.download.DownloadProgressState
 import com.example.browser.engine.BrowserEngineContract
 import com.example.browser.engine.EnginePageState
 import com.example.browser.engine.GeckoRuntimeProvider
 import com.example.browser.engine.GeckoSessionManager
 import com.example.browser.engine.GeckoViewEngine
 import com.example.browser.engine.WebPromptRequest
+import com.example.browser.lifecycle.AppHibernationManager
 import com.example.browser.thumbnail.TabThumbnailManager
 import com.example.data.local.BrowserDatabase
 import com.example.data.local.entity.BookmarkEntity
 import com.example.data.local.entity.CookieEntity
 import com.example.data.local.entity.DownloadEntity
 import com.example.data.local.entity.HistoryEntity
+import com.example.data.local.entity.SitePermissionEntity
 import com.example.data.local.entity.TabEntity
 import com.example.data.local.entity.UserAccountEntity
 import com.example.data.model.SearchEngine
@@ -59,6 +63,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             downloadDao = database.downloadDao(),
             cookieDao = database.cookieDao(),
             userAccountDao = database.userAccountDao(),
+            sitePermissionDao = database.sitePermissionDao(),
             preferences = preferences
         )
     }
@@ -76,6 +81,19 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     // Solicitud activa de inicio de sesión asistido en la página web actual
     private val _webSignInPrompt = MutableStateFlow<WebSignInPrompt?>(null)
     val webSignInPrompt: StateFlow<WebSignInPrompt?> = _webSignInPrompt.asStateFlow()
+
+    // --- Permisos por Sitio Web y Políticas de Bloqueo Silencioso ("No Preguntar") ---
+    val allSitePermissions: StateFlow<List<SitePermissionEntity>> = repository.getAllSitePermissions()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val blockNotificationPrompts: StateFlow<Boolean> = repository.blockNotificationPrompts
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val blockLocationPrompts: StateFlow<Boolean> = repository.blockLocationPrompts
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val blockMediaPrompts: StateFlow<Boolean> = repository.blockMediaPrompts
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     // --- Preferencias ---
     val searchEngine: StateFlow<SearchEngine> = repository.searchEngine
@@ -95,6 +113,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     val homePageUrl: StateFlow<String> = repository.homePageUrl
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "about:home")
+
+    val isSoundEffectsEnabled: StateFlow<Boolean> = repository.isSoundEffectsEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     // --- Modos de Navegación ---
     enum class TabMode { NORMAL, PROTECTED, INCOGNITO }
@@ -164,10 +185,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     val sessionManager = GeckoSessionManager(application)
 
+    // Estado reactivo en tiempo real de descargas activas (progreso, velocidad, estado)
+    val activeDownloads: StateFlow<Map<Long, DownloadProgressState>> = DownloadEngine.activeDownloads
+
     // Referencia al motor de renderizado activo
     var engineController: BrowserEngineContract? = null
 
     init {
+        // Registrar el sessionManager para permitir hibernación y ahorro de RAM tras 20s
+        AppHibernationManager.registerSessionManager(sessionManager)
+
         // Inicializar pestañas si la lista está vacía
         viewModelScope.launch {
             val tabs = repository.getNormalTabs().first()
@@ -745,16 +772,29 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         mimeType: String? = null,
         contentLength: Long = 0L
     ) {
-        val downloadEntity = DownloadManagerHelper.startDownload(
+        DownloadManagerHelper.startDownload(
             context = getApplication(),
             url = url,
             contentDisposition = contentDisposition,
             mimeType = mimeType,
             contentLength = contentLength
         )
-        viewModelScope.launch {
-            repository.addDownload(downloadEntity)
-        }
+    }
+
+    fun pauseDownload(id: Long) {
+        DownloadEngine.pauseDownload(getApplication(), id)
+    }
+
+    fun resumeDownload(id: Long) {
+        DownloadEngine.resumeDownload(getApplication(), id)
+    }
+
+    fun cancelDownload(id: Long) {
+        DownloadEngine.cancelDownload(getApplication(), id)
+    }
+
+    fun retryDownload(id: Long) {
+        DownloadEngine.retryDownload(getApplication(), id)
     }
 
     fun openDownload(download: DownloadEntity) {
@@ -762,6 +802,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun deleteDownload(id: Long) {
+        DownloadEngine.cancelDownload(getApplication(), id)
         viewModelScope.launch { repository.deleteDownload(id) }
     }
 
@@ -804,6 +845,63 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun setHomePageUrl(url: String) {
         viewModelScope.launch { repository.setHomePageUrl(url) }
+    }
+
+    // --- Configuración de Políticas de Bloqueo Silencioso ("No Preguntar") ---
+    fun setBlockNotificationPrompts(enabled: Boolean) {
+        viewModelScope.launch { repository.setBlockNotificationPrompts(enabled) }
+    }
+
+    fun setBlockLocationPrompts(enabled: Boolean) {
+        viewModelScope.launch { repository.setBlockLocationPrompts(enabled) }
+    }
+
+    fun setBlockMediaPrompts(enabled: Boolean) {
+        viewModelScope.launch { repository.setBlockMediaPrompts(enabled) }
+    }
+
+    // --- Efectos de Sonido y Audio ---
+    fun setSoundEffectsEnabled(enabled: Boolean) {
+        viewModelScope.launch { repository.setSoundEffectsEnabled(enabled) }
+    }
+
+    // --- Gestión de Permisos por Sitio Web ---
+    fun saveSitePermission(origin: String, permissionType: String, status: String) {
+        viewModelScope.launch {
+            repository.saveSitePermission(origin, permissionType, status)
+        }
+    }
+
+    fun updateSitePermissionStatus(id: Long, status: String) {
+        viewModelScope.launch {
+            repository.updateSitePermissionStatus(id, status)
+        }
+    }
+
+    fun deleteSitePermission(id: Long) {
+        viewModelScope.launch {
+            repository.deleteSitePermission(id)
+        }
+    }
+
+    fun deletePermissionsForOrigin(origin: String) {
+        viewModelScope.launch {
+            repository.deleteSitePermissionsForOrigin(origin)
+        }
+    }
+
+    fun clearAllSitePermissions() {
+        viewModelScope.launch {
+            repository.clearAllSitePermissions()
+        }
+    }
+
+    fun findSitePermissionSync(origin: String, permissionType: String): SitePermissionEntity? {
+        return repository.findSitePermissionSync(origin, permissionType)
+    }
+
+    suspend fun findSitePermission(origin: String, permissionType: String): SitePermissionEntity? {
+        return repository.findSitePermission(origin, permissionType)
     }
 
     fun clearBrowsingData() {
@@ -1104,14 +1202,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         autoSignInWeb: Boolean = true
     ) {
         viewModelScope.launch {
-            val account = UserAccountEntity(
+            val account = UserAccountEntity.createSecure(
                 email = email,
                 displayName = displayName,
                 photoUrl = photoUrl,
                 provider = provider,
                 isActive = true,
                 autoSignInWeb = autoSignInWeb,
-                idToken = idToken
+                plainIdToken = idToken
             )
             repository.linkAccount(account)
         }

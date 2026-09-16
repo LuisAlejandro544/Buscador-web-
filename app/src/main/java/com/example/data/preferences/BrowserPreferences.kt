@@ -28,6 +28,10 @@ class BrowserPreferences(private val context: Context) {
         val KEY_DO_NOT_TRACK = booleanPreferencesKey("do_not_track")
         val KEY_HOME_PAGE_URL = stringPreferencesKey("home_page_url")
         val KEY_BLOCK_THIRD_PARTY_COOKIES = booleanPreferencesKey("block_third_party_cookies")
+        val KEY_BLOCK_NOTIFICATION_PROMPTS = booleanPreferencesKey("block_notification_prompts")
+        val KEY_BLOCK_LOCATION_PROMPTS = booleanPreferencesKey("block_location_prompts")
+        val KEY_BLOCK_MEDIA_PROMPTS = booleanPreferencesKey("block_media_prompts")
+        val KEY_SOUND_EFFECTS_ENABLED = booleanPreferencesKey("sound_effects_enabled")
     }
 
     val searchEngine: Flow<SearchEngine> = context.dataStore.data.map { preferences ->
@@ -57,6 +61,23 @@ class BrowserPreferences(private val context: Context) {
 
     val homePageUrl: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[KEY_HOME_PAGE_URL] ?: "about:home"
+    }
+
+    // Bloqueo Silencioso de Solicitudes de Permisos ("No Preguntar")
+    val blockNotificationPrompts: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_BLOCK_NOTIFICATION_PROMPTS] ?: false
+    }
+
+    val blockLocationPrompts: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_BLOCK_LOCATION_PROMPTS] ?: false
+    }
+
+    val blockMediaPrompts: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_BLOCK_MEDIA_PROMPTS] ?: false
+    }
+
+    val isSoundEffectsEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_SOUND_EFFECTS_ENABLED] ?: true
     }
 
     suspend fun setSearchEngine(engine: SearchEngine) {
@@ -92,6 +113,30 @@ class BrowserPreferences(private val context: Context) {
     suspend fun setHomePageUrl(url: String) {
         context.dataStore.edit { preferences ->
             preferences[KEY_HOME_PAGE_URL] = url
+        }
+    }
+
+    suspend fun setBlockNotificationPrompts(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_BLOCK_NOTIFICATION_PROMPTS] = enabled
+        }
+    }
+
+    suspend fun setBlockLocationPrompts(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_BLOCK_LOCATION_PROMPTS] = enabled
+        }
+    }
+
+    suspend fun setBlockMediaPrompts(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_BLOCK_MEDIA_PROMPTS] = enabled
+        }
+    }
+
+    suspend fun setSoundEffectsEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_SOUND_EFFECTS_ENABLED] = enabled
         }
     }
 }

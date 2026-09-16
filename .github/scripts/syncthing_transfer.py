@@ -46,19 +46,35 @@ def main():
     dest_apk = os.path.join(share_dir, "app-debug.apk")
     shutil.copy2(apk_src, dest_apk)
 
-    # 2. Preparar directorio de configuración de Syncthing
+    # 2. Preparar directorio de configuración de Syncthing de forma segura
     home_dir = "/tmp/syncthing_home"
     os.makedirs(home_dir, exist_ok=True)
 
-    cert_path = os.path.join(".github", "syncthing", "cert.pem")
-    key_path = os.path.join(".github", "syncthing", "key.pem")
+    dest_cert_path = os.path.join(home_dir, "cert.pem")
+    dest_key_path = os.path.join(home_dir, "key.pem")
 
-    if os.path.exists(cert_path) and os.path.exists(key_path):
-        shutil.copy2(cert_path, os.path.join(home_dir, "cert.pem"))
-        shutil.copy2(key_path, os.path.join(home_dir, "key.pem"))
+    env_key = os.environ.get("SYNCTHING_KEY_PEM", "").strip()
+    env_cert = os.environ.get("SYNCTHING_CERT_PEM", "").strip()
+
+    cert_file_path = os.path.join(".github", "syncthing", "cert.pem")
+    key_file_path = os.path.join(".github", "syncthing", "key.pem")
+
+    if env_key and env_cert:
+        print("🔐 Utilizando credenciales criptográficas provistas de forma segura vía variables de entorno / Secrets.")
+        with open(dest_key_path, "w") as f:
+            f.write(env_key + "\n")
+        with open(dest_cert_path, "w") as f:
+            f.write(env_cert + "\n")
+    elif os.path.exists(cert_file_path) and os.path.exists(key_file_path):
+        shutil.copy2(cert_file_path, dest_cert_path)
+        shutil.copy2(key_file_path, dest_key_path)
     else:
-        print("❌ Error: No se encontraron cert.pem y key.pem en .github/syncthing/")
-        sys.exit(1)
+        print("⚡ Generando par de claves efímero con syncthing generate...")
+        try:
+            subprocess.run(["syncthing", "generate", f"--home={home_dir}"], check=True, stdout=subprocess.DEVNULL)
+        except Exception as e:
+            print(f"❌ Error al inicializar certificados de Syncthing: {e}")
+            sys.exit(1)
 
     # 3. Generar archivo config.xml optimizado para sincronización P2P
     config_xml = f"""<configuration version="37">

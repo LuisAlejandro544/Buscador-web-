@@ -26,7 +26,11 @@ app/src/main/
 │   │   │   ├── AccountCredentialManager.kt # Gestor de credenciales nativas AndroidX y Google ID
 │   │   │   └── WebSignInBridge.kt          # Detección de páginas de autenticación y generación de JS de acceso
 │   │   ├── download/
-│   │   │   └── DownloadManagerHelper.kt # Gestor de descargas con integración al DownloadManager de Android
+│   │   │   ├── DownloadEngine.kt           # Motor autónomo de descargas concurrentes en streaming con pausas y reanudaciones
+│   │   │   ├── DownloadNotificationHelper.kt # Gestor de notificaciones nativas de progreso y finalización
+│   │   │   └── DownloadManagerHelper.kt    # Integración legacy con el servicio del sistema
+│   │   ├── sound/
+│   │   │   └── SoundEffectManager.kt       # Gestor de efectos sonoros y háptica de baja latencia con SoundPool
 │   │   ├── engine/
 │   │   │   ├── BrowserEngineContract.kt # Interfaz abstracta que define las operaciones de navegación web
 │   │   │   ├── GeckoPromptHandler.kt    # Delegado GeckoView PromptDelegate para alertas, confirmaciones y ficheros
@@ -48,6 +52,7 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   │   │   ├── CookieDao.kt         # Acceso, filtrado por sitio y purga de cookies y rastreadores
 │   │   │   ├── DownloadDao.kt       # Acceso y control del registro de descargas
 │   │   │   ├── HistoryDao.kt        # Acceso al historial cronológico de navegación
+│   │   │   ├── SitePermissionDao.kt # Acceso y control de permisos otorgados o bloqueados por dominio web
 │   │   │   ├── TabDao.kt            # Acceso y persistencia de pestañas abiertas (normales y protegidas)
 │   │   │   └── UserAccountDao.kt    # Acceso, conmutación y persistencia de cuentas de usuario
 │   │   ├── entity/
@@ -55,14 +60,15 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   │   │   ├── CookieEntity.kt      # Modelo relacional para cookies (dominio, valor, expiración, isTracker)
 │   │   │   ├── DownloadEntity.kt    # Modelo relacional para descargas (estado, bytes, URI)
 │   │   │   ├── HistoryEntity.kt     # Modelo relacional para historial
+│   │   │   ├── SitePermissionEntity.kt # Modelo relacional para permisos web (origen, tipo, estado y actualización)
 │   │   │   ├── TabEntity.kt         # Modelo relacional para pestañas (incluye flags isIncognito, isProtected y contextId)
 │   │   │   └── UserAccountEntity.kt # Modelo relacional para cuentas vinculadas (email, nombre, activo)
-│   │   └── BrowserDatabase.kt       # Base de datos Room con control de versiones (v4) y migraciones
+│   │   └── BrowserDatabase.kt       # Base de datos Room con control de versiones (v8) y migraciones
 │   ├── model/
 │   │   ├── BrowserTab.kt            # Modelo de dominio para pestañas
 │   │   └── SearchEngine.kt          # Proveedores de búsqueda (DuckDuckGo, Google, Bing, etc.)
 │   ├── preferences/
-│   │   └── BrowserPreferences.kt    # Persistencia de preferencias del usuario mediante DataStore
+│   │   └── BrowserPreferences.kt    # Persistencia de preferencias del usuario mediante DataStore (incluye bloqueo de prompts)
 │   └── repository/
 │       └── BrowserRepository.kt     # Repositorio unificado que conecta DAOs, DataStore y ViewModel
 ├── ui/
@@ -73,7 +79,7 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   ├── browser/
 │   │   └── BrowserScreen.kt         # Pantalla principal con contenedor GeckoView, omnibox y menú
 │   ├── components/
-│   │   ├── WebPromptDialog.kt       # Diálogos nativos Material 3 para alerts, confirms, prompts y ficheros
+│   │   ├── WebPromptDialog.kt       # Diálogos nativos Material 3 para alerts, confirms, prompts, permisos y ficheros
 │   │   └── WebSignInPromptBanner.kt # Banner flotante interactivo de acceso web con un solo toque
 │   ├── cookies/
 │   │   └── CookiesScreen.kt         # Pantalla de auditoría de cookies, detección de rastreadores y borrado
@@ -84,6 +90,8 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   ├── navigation/
 │   │   ├── BrowserNavGraph.kt       # Grafo y rutas de navegación con Jetpack Navigation Compose
 │   │   └── Screen.kt                # Definición de pantallas y rutas fuertemente tipadas
+│   ├── permissions/
+│   │   └── SitePermissionsScreen.kt # Pantalla dedicada para gestión de permisos por sitio y políticas "No Preguntar"
 │   ├── settings/
 │   │   └── SettingsScreen.kt        # Pantalla completa de ajustes y configuración del navegador
 │   ├── tabs/

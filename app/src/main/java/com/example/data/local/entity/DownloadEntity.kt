@@ -17,14 +17,17 @@ data class DownloadEntity(
     val fileName: String,
     val mimeType: String? = null,
     val fileSizeBytes: Long = 0L,
+    val downloadedBytes: Long = 0L,
     val downloadManagerId: Long? = null,
     val localUri: String? = null,
-    val status: String = STATUS_COMPLETED, // COMPLETED, DOWNLOADING, FAILED
+    val status: String = STATUS_COMPLETED, // COMPLETED, DOWNLOADING, PAUSED, FAILED, CANCELLED
     val timestamp: Long = System.currentTimeMillis()
 ) {
     companion object {
         const val STATUS_DOWNLOADING = "DOWNLOADING"
+        const val STATUS_PAUSED = "PAUSED"
         const val STATUS_COMPLETED = "COMPLETED"
         const val STATUS_FAILED = "FAILED"
+        const val STATUS_CANCELLED = "CANCELLED"
     }
 }

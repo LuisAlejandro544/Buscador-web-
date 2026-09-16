@@ -58,4 +58,16 @@ sealed class WebPromptRequest {
         val onConfirm: (username: String, password: String) -> Unit,
         val onDismiss: () -> Unit
     ) : WebPromptRequest()
+
+    /**
+     * Diálogo interactivo para solicitud de permisos web (Micrófono, Cámara, Geolocalización, Notificaciones).
+     */
+    data class Permission(
+        val origin: String,
+        val permissionType: String,
+        val title: String,
+        val message: String,
+        val onGrant: (remember: Boolean) -> Unit,
+        val onDeny: (remember: Boolean) -> Unit
+    ) : WebPromptRequest()
 }

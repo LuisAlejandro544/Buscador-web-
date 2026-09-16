@@ -109,4 +109,17 @@ Este archivo proporciona el contexto fundamental del proyecto para cualquier mod
     - **Inyección y Autocompletado en GeckoView:** Al confirmar el banner, `BrowserViewModel` invoca `engineController?.evaluateJavascript` con el script generado por `WebSignInBridge.generateSignInScript()`, autocompletando los campos de correo o activando los botones de acceso de Google.
     - **Pantalla Dedicada (`AccountsScreen.kt`):** Pantalla completa para gestionar cuentas, cambiar la identidad activa, vincular nuevas cuentas o eliminarlas, accesible desde el menú desplegable y desde Ajustes.
 
+12. **Gestor de Permisos por Sitio Web y Políticas de "No Preguntar" (`SitePermissionsScreen.kt`):**
+    - **Control Granular en Base de Datos (Room v8):** `SitePermissionEntity` almacena `origin`, `permissionType` (`MICROPHONE`, `CAMERA`, `GEOLOCATION`, `NOTIFICATION`, `PERSISTENT_STORAGE`), `status` (`GRANTED`, `DENIED`) y marca temporal `updatedAt`.
+    - **Integración con `GeckoSession.PermissionDelegate`:** En `GeckoViewEngine`, intercepta tanto `onContentPermissionRequest` como `onMediaPermissionRequest`. Primero verifica las directivas de silenciamiento, luego consulta el historial almacenado en Room y, si no hay decisión previa, abre un diálogo nativo interactivo (`WebPromptRequest.Permission`) con opción de recordar la respuesta.
+    - **Políticas Silenciosas de "No Preguntar":** Preferencias booleanas en DataStore (`block_notification_prompts`, `block_location_prompts`, `block_media_prompts`) expuestas en ViewModel para denegar automáticamente estas solicitudes sin mostrar popups invasivos al usuario.
+    - **Pantalla Dedicada:** Permite auditar qué permisos tiene cada dominio, alternar su estado en vivo, eliminar permisos individuales para que el sitio vuelva a preguntar o purgar todos los permisos registrados con confirmación. Accesible desde Ajustes > Privacidad y Seguridad.
+
+13. **Sistema de Efectos de Sonido Nativos y Procesamiento de Audio (`SoundEffectManager.kt`):**
+    - **Arquitectura de Cero Latencia con SoundPool:** Utiliza la API nativa `android.media.SoundPool` con atributos de sonificación para reproducir efectos cortos en formato PCM `.wav` precargados en memoria sin gastar ciclos de CPU descomprimiendo audio.
+    - **Banco de Tonos de Logro para Descargas:** Extraídos de un paquete de *achievement chimes* (`635665__laurenponder__achievment-chimes.wav`) ubicado en `tools/audio/`, divididos en 6 archivos limpios (`download_success_1.wav` a `download_success_6.wav`) en `app/src/main/res/raw/`. Al finalizar una descarga con éxito en `DownloadEngine`, se selecciona y reproduce uno aleatoriamente acompañado de una vibración háptica rápida.
+    - **Herramienta de Procesamiento `tools/audio_processor.sh`:** Script ejecutable en Bash y Python que permite convertir audio entre formatos (WAV, MP3, OGG), recortar intervalos con micro-fade (`trim`), dividir paquetes multi-audio por silencios (`split-silence`) y extraer paquetes de tonos (`split-chimes`).
+    - **Preferencias en DataStore:** Conmutador `sound_effects_enabled` en `BrowserPreferences` y `BrowserViewModel` integrado con la pantalla de Ajustes, con botón para probar la reproducción en vivo.
+    - **Expansión Futura:** Planificada la adición de nuevos efectos de sonido para marcadores ("pop"), cierre de pestañas ("whoosh") y alertas de seguridad.
+
 

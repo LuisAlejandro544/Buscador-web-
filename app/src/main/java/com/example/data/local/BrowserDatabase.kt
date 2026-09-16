@@ -8,19 +8,21 @@ import com.example.data.local.dao.BookmarkDao
 import com.example.data.local.dao.CookieDao
 import com.example.data.local.dao.DownloadDao
 import com.example.data.local.dao.HistoryDao
+import com.example.data.local.dao.SitePermissionDao
 import com.example.data.local.dao.TabDao
 import com.example.data.local.dao.UserAccountDao
 import com.example.data.local.entity.BookmarkEntity
 import com.example.data.local.entity.CookieEntity
 import com.example.data.local.entity.DownloadEntity
 import com.example.data.local.entity.HistoryEntity
+import com.example.data.local.entity.SitePermissionEntity
 import com.example.data.local.entity.TabEntity
 import com.example.data.local.entity.UserAccountEntity
 
 /**
  * Base de datos Room principal del Navegador Web.
  * Contiene las tablas para gestión de pestañas, marcadores, historial, descargas,
- * cookies de navegación y cuentas de usuario vinculadas para inicio de sesión web.
+ * cookies de navegación, permisos por sitio web y cuentas vinculadas.
  */
 @Database(
     entities = [
@@ -29,9 +31,10 @@ import com.example.data.local.entity.UserAccountEntity
         HistoryEntity::class,
         DownloadEntity::class,
         CookieEntity::class,
-        UserAccountEntity::class
+        UserAccountEntity::class,
+        SitePermissionEntity::class
     ],
-    version = 6,
+    version = 8,
     exportSchema = false
 )
 abstract class BrowserDatabase : RoomDatabase() {
@@ -42,6 +45,7 @@ abstract class BrowserDatabase : RoomDatabase() {
     abstract fun downloadDao(): DownloadDao
     abstract fun cookieDao(): CookieDao
     abstract fun userAccountDao(): UserAccountDao
+    abstract fun sitePermissionDao(): SitePermissionDao
 
     companion object {
         @Volatile

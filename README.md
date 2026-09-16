@@ -63,6 +63,20 @@ Navegador web moderno, modular y extensible para dispositivos Android (Android 1
 - **Inyección y Autocompletado en GeckoView:** Al aceptar el banner, se evalúa JavaScript en la sesión activa de GeckoView para rellenar campos de usuario/correo o pulsar selectores estándar de Google Sign-In sin tener que teclear.
 - **Pantalla Dedicada de Cuentas (`AccountsScreen`):** Administra múltiples perfiles, conmuta la cuenta activa, añade cuentas nuevas con un toque o elimina cuentas obsoletas con facilidad.
 
+### 🛡️ Gestor de Permisos por Sitio Web y Políticas de Bloqueo Silencioso ("No Preguntar")
+- **Control Granular por Dominio:** Visualización completa de todos los orígenes web que cuentan con permisos asignados (Cámara, Micrófono, Ubicación GPS, Notificaciones Web y Almacenamiento Persistente).
+- **Conmutación Inmediata y Revocación:** Cambia al instante el estado de un permiso entre "Permitido" y "Bloqueado", revoca permisos individuales con un toque para que la web vuelva a preguntar, o elimina todos los permisos de un dominio en bloque.
+- **Políticas Silenciosas de "No Preguntar":** Bloqueo automático a nivel de motor para silenciar solicitudes de Notificaciones, solicitudes de Ubicación y accesos a Cámara/Micrófono sin interrumpir la navegación con diálogos emergentes molestos.
+- **Diálogos Nativos con Opción de Recordar:** Cuadro de diálogo nativo en Compose con checkbox "Recordar mi elección" integrado directamente con `GeckoSession.PermissionDelegate` y la base de datos local Room.
+- **Pantalla Dedicada (`SitePermissionsScreen`):** Incluye barra de búsqueda por dominio, tarjetas visuales agrupadas por sitio, botón para restablecer todos los permisos y conmutadores rápidos de políticas globales.
+
+### 🔔 Sistema de Efectos de Sonido Nativos y Retroalimentación Háptica
+- **Reproducción sin Latencia (`SoundPool`):** Motor de sonido dedicado (`SoundEffectManager`) optimizado para audio PCM sin compresión (`.wav`) con cero sobrecarga de CPU y respuesta instantánea.
+- **Tonos de Logro Aleatorios en Descargas:** Al completarse exitosamente una descarga de archivo, el navegador selecciona y reproduce de forma aleatoria una de las 6 variantes de tonos de logro creados a partir de *achievement chimes*, acompañados de una pulsación háptica sutil.
+- **Control en Ajustes:** Interruptor maestro para activar o silenciar los efectos de sonido y botón interactivo para probar los tonos aleatorios en tiempo real.
+- **Utilidad de Procesamiento de Audio (`tools/audio_processor.sh`):** Herramienta en bash y Python para convertir formatos de audio (WAV, MP3, OGG), extraer segmentos sin chasquidos mediante micro-desvanecimiento (`trim`), dividir archivos con detección de silencio (`split-silence`) y extraer paquetes de sonidos.
+- **🔊 Próximamente:** Se incorporarán más bancos de efectos de sonido personalizables para añadir marcadores, cerrar pestañas, purgar datos y alertas de seguridad.
+
 ### ⚙️ Ajustes y Personalización
 - Selector de motores de búsqueda predeterminados: DuckDuckGo, Google, Bing, Brave y Ecosia.
 - Configuración de página de inicio personalizada o pantalla de inicio nativa (`about:home`).
