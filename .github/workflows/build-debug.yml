@@ -132,23 +132,31 @@ jobs:
 
       # 11. Conexión segura a Tailscale (Red Privada P2P hacia el teléfono)
       - name: Conectar a Tailscale
-        if: ${{ secrets.TAILSCALE_AUTHKEY != '' }}
         uses: tailscale/github-action@v3
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+        continue-on-error: true
 
       # 12. Transferencia directa del APK a la carpeta /Navegador del teléfono vía SFTP/SCP
       - name: Transferir APK a la carpeta /Navegador del teléfono
-        if: ${{ secrets.TAILSCALE_AUTHKEY != '' && secrets.PHONE_IP != '' && secrets.SSH_PASSWORD != '' }}
+        env:
+          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+          PHONE_IP: ${{ secrets.PHONE_IP }}
+          SSH_USER: ${{ secrets.SSH_USER || 'github' }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '2222' }}
         run: |
+          if [ -z "$TAILSCALE_AUTHKEY" ] || [ -z "$PHONE_IP" ] || [ -z "$SSH_PASSWORD" ]; then
+            echo "⚠️ Secretos de conexión (TAILSCALE_AUTHKEY, PHONE_IP o SSH_PASSWORD) no detectados."
+            echo "Saltando transferencia P2P directa. El APK estará disponible en los artefactos."
+            exit 0
+          fi
+
           echo "============================================================"
           echo "📲 Iniciando transferencia directa P2P hacia el móvil..."
           echo "============================================================"
           sudo apt-get update -y && sudo apt-get install -y sshpass
 
-          PHONE_IP="${{ secrets.PHONE_IP }}"
-          SSH_PORT="${{ secrets.SSH_PORT || '2222' }}"
-          SSH_USER="${{ secrets.SSH_USER || 'github' }}"
           APK_SRC="app/build/outputs/apk/debug/app-debug.apk"
 
           echo "🔍 Verificando estado de la red privada Tailscale..."
@@ -171,7 +179,7 @@ jobs:
           echo "🚀 Transfiriendo APK por SFTP nativo a $SSH_USER@$PHONE_IP:$SSH_PORT..."
           TRANSFER_SUCCESS=false
 
-          if sshpass -p "${{ secrets.SSH_PASSWORD }}" sftp -P "$SSH_PORT" $SSH_OPTS -b /tmp/sftp_put.txt "${SSH_USER}@${PHONE_IP}"; then
+          if sshpass -p "$SSH_PASSWORD" sftp -P "$SSH_PORT" $SSH_OPTS -b /tmp/sftp_put.txt "${SSH_USER}@${PHONE_IP}"; then
             TRANSFER_SUCCESS=true
             echo "✅ Transferencia exitosa vía SFTP (alias raíz)."
           else
@@ -180,13 +188,13 @@ jobs:
             put app/build/outputs/apk/debug/app-debug.apk /storage/emulated/0/Navegador/app-debug.apk
             bye
             EOF
-            if sshpass -p "${{ secrets.SSH_PASSWORD }}" sftp -P "$SSH_PORT" $SSH_OPTS -b /tmp/sftp_put_full.txt "${SSH_USER}@${PHONE_IP}"; then
+            if sshpass -p "$SSH_PASSWORD" sftp -P "$SSH_PORT" $SSH_OPTS -b /tmp/sftp_put_full.txt "${SSH_USER}@${PHONE_IP}"; then
               TRANSFER_SUCCESS=true
               echo "✅ Transferencia exitosa vía SFTP (ruta absoluta)."
             else
               echo "⚠️ Reintentando mediante SCP con opciones de compatibilidad..."
-              if sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -P "$SSH_PORT" $SSH_OPTS "$APK_SRC" "${SSH_USER}@${PHONE_IP}:app-debug.apk" || \
-                 sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -P "$SSH_PORT" $SSH_OPTS "$APK_SRC" "${SSH_USER}@${PHONE_IP}:/storage/emulated/0/Navegador/app-debug.apk"; then
+              if sshpass -p "$SSH_PASSWORD" scp -P "$SSH_PORT" $SSH_OPTS "$APK_SRC" "${SSH_USER}@${PHONE_IP}:app-debug.apk" || \
+                 sshpass -p "$SSH_PASSWORD" scp -P "$SSH_PORT" $SSH_OPTS "$APK_SRC" "${SSH_USER}@${PHONE_IP}:/storage/emulated/0/Navegador/app-debug.apk"; then
                 TRANSFER_SUCCESS=true
                 echo "✅ Transferencia exitosa vía SCP."
               fi
