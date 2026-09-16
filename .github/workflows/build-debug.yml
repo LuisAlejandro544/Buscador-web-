@@ -132,47 +132,81 @@ jobs:
 
       # 11. Conexión segura a Tailscale (Red Privada P2P hacia el teléfono)
       - name: Conectar a Tailscale
-        if: ${{ env.HAS_TAILSCALE == 'true' }}
+        if: ${{ secrets.TAILSCALE_AUTHKEY != '' }}
         uses: tailscale/github-action@v3
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-        env:
-          HAS_TAILSCALE: ${{ secrets.TAILSCALE_AUTHKEY != '' }}
 
       # 12. Transferencia directa del APK a la carpeta /Navegador del teléfono vía SFTP/SCP
       - name: Transferir APK a la carpeta /Navegador del teléfono
-        if: ${{ env.HAS_TRANSFER_CONFIG == 'true' }}
+        if: ${{ secrets.TAILSCALE_AUTHKEY != '' && secrets.PHONE_IP != '' && secrets.SSH_PASSWORD != '' }}
         run: |
           echo "============================================================"
           echo "📲 Iniciando transferencia directa P2P hacia el móvil..."
           echo "============================================================"
           sudo apt-get update -y && sudo apt-get install -y sshpass
-          
+
           PHONE_IP="${{ secrets.PHONE_IP }}"
           SSH_PORT="${{ secrets.SSH_PORT || '2222' }}"
           SSH_USER="${{ secrets.SSH_USER || 'github' }}"
           APK_SRC="app/build/outputs/apk/debug/app-debug.apk"
 
-          echo "Conectando con $SSH_USER@$PHONE_IP en puerto $SSH_PORT..."
-          # Transferir a /storage/emulated/0/Navegador/app-debug.apk o alias raíz /app-debug.apk
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -P "$SSH_PORT" \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            -o ConnectTimeout=45 \
-            "$APK_SRC" \
-            "${SSH_USER}@${PHONE_IP}:/storage/emulated/0/Navegador/app-debug.apk" || \
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -P "$SSH_PORT" \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            -o ConnectTimeout=45 \
-            "$APK_SRC" \
-            "${SSH_USER}@${PHONE_IP}:/app-debug.apk"
+          echo "🔍 Verificando estado de la red privada Tailscale..."
+          tailscale status || true
 
-          echo "============================================================"
-          echo "🎉 ¡Transferencia finalizada! El APK está en tu carpeta /Navegador."
-          echo "============================================================"
-        env:
-          HAS_TRANSFER_CONFIG: ${{ secrets.TAILSCALE_AUTHKEY != '' && secrets.PHONE_IP != '' && secrets.SSH_PASSWORD != '' }}
+          echo "📡 Probando conectividad con el teléfono ($PHONE_IP)..."
+          tailscale ping -c 3 "$PHONE_IP" || true
+
+          # Opciones de compatibilidad para servidores SSH/SFTP en Android (The Olive Tree App)
+          # Habilita compatibilidad con algoritmos de intercambio de claves y cifrados heredados de Java
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -o ServerAliveInterval=10 -o KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group14-sha256,diffie-hellman-group-exchange-sha256 -o HostKeyAlgorithms=+ssh-rsa,rsa-sha2-256,rsa-sha2-512"
+
+          # Archivo por lotes SFTP (Protocolo nativo de la app "SSH Server")
+          # Como el Alias "/" apunta a /storage/emulated/0/Navegador, colocarlo en la raíz lo guarda en esa carpeta
+          cat << 'EOF' > /tmp/sftp_put.txt
+          put app/build/outputs/apk/debug/app-debug.apk app-debug.apk
+          bye
+          EOF
+
+          echo "🚀 Transfiriendo APK por SFTP nativo a $SSH_USER@$PHONE_IP:$SSH_PORT..."
+          TRANSFER_SUCCESS=false
+
+          if sshpass -p "${{ secrets.SSH_PASSWORD }}" sftp -P "$SSH_PORT" $SSH_OPTS -b /tmp/sftp_put.txt "${SSH_USER}@${PHONE_IP}"; then
+            TRANSFER_SUCCESS=true
+            echo "✅ Transferencia exitosa vía SFTP (alias raíz)."
+          else
+            echo "⚠️ SFTP directo falló. Intentando con ruta absoluta..."
+            cat << 'EOF' > /tmp/sftp_put_full.txt
+            put app/build/outputs/apk/debug/app-debug.apk /storage/emulated/0/Navegador/app-debug.apk
+            bye
+            EOF
+            if sshpass -p "${{ secrets.SSH_PASSWORD }}" sftp -P "$SSH_PORT" $SSH_OPTS -b /tmp/sftp_put_full.txt "${SSH_USER}@${PHONE_IP}"; then
+              TRANSFER_SUCCESS=true
+              echo "✅ Transferencia exitosa vía SFTP (ruta absoluta)."
+            else
+              echo "⚠️ Reintentando mediante SCP con opciones de compatibilidad..."
+              if sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -P "$SSH_PORT" $SSH_OPTS "$APK_SRC" "${SSH_USER}@${PHONE_IP}:app-debug.apk" || \
+                 sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -P "$SSH_PORT" $SSH_OPTS "$APK_SRC" "${SSH_USER}@${PHONE_IP}:/storage/emulated/0/Navegador/app-debug.apk"; then
+                TRANSFER_SUCCESS=true
+                echo "✅ Transferencia exitosa vía SCP."
+              fi
+            fi
+          fi
+
+          if [ "$TRANSFER_SUCCESS" = true ]; then
+            echo "============================================================"
+            echo "🎉 ¡Transferencia completada! El APK está en tu carpeta /Navegador."
+            echo "============================================================"
+          else
+            echo "============================================================"
+            echo "⚠️ AVISO: No se pudo conectar con el servidor SSH de tu teléfono."
+            echo "Posibles causas a revisar en tu móvil:"
+            echo " 1. ¿Presionaste el botón Play (▶️) en la app SSH Server?"
+            echo " 2. ¿Tailscale está encendido y conectado en tu teléfono?"
+            echo " 3. ¿El teléfono estaba bloqueado o cerró la app en segundo plano?"
+            echo "El APK compilado se ha guardado como artefacto descargable en GitHub."
+            echo "============================================================"
+          fi
 
       # 13. Subir el APK Debug como artefacto descargable en GitHub (Respaldo)
       - name: Subir APK Debug como Artefacto (Respaldo)
