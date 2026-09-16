@@ -2,6 +2,7 @@ package com.example.browser.engine
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
 import com.example.viewmodel.BrowserViewModel
@@ -156,6 +157,31 @@ class GeckoViewEngine(
 
         // 4. Delegado de Diálogos Web: Alertas JS, confirmaciones, prompts y selector de archivos
         session.promptDelegate = GeckoPromptHandler(context, viewModel)
+
+        // 5. Delegado de Permisos: Bloqueo estricto de WebRTC y sensores en modo incógnito (Anti IP-Leak)
+        session.permissionDelegate = object : GeckoSession.PermissionDelegate {
+            override fun onMediaPermissionRequest(
+                s: GeckoSession,
+                uri: String,
+                video: Array<GeckoSession.PermissionDelegate.MediaSource>?,
+                audio: Array<GeckoSession.PermissionDelegate.MediaSource>?,
+                callback: GeckoSession.PermissionDelegate.MediaCallback
+            ) {
+                // Denegar estrictamente en incógnito para neutralizar fugas de IP por WebRTC
+                callback.reject()
+            }
+
+            override fun onContentPermissionRequest(
+                s: GeckoSession,
+                perm: GeckoSession.PermissionDelegate.ContentPermission
+            ): GeckoResult<Int>? {
+                if (s.settings.usePrivateMode) {
+                    // Rechazar geolocalización, notificaciones y persistencia en incógnito
+                    return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
+                }
+                return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT)
+            }
+        }
     }
 
     override fun loadUrl(url: String) {
@@ -210,6 +236,25 @@ class GeckoViewEngine(
     override fun evaluateJavascript(script: String, callback: ((String) -> Unit)?) {
         currentSession.loadUri("javascript:$script")
         callback?.invoke("")
+    }
+
+    /**
+     * Captura una instantánea visual en píxeles del contenido web actualmente renderizado
+     * en GeckoView para generar la miniatura de la pestaña en segundo plano.
+     */
+    fun captureThumbnail(onCaptured: (Bitmap) -> Unit) {
+        try {
+            geckoView.capturePixels().then(
+                GeckoResult.OnValueListener { bitmap: Bitmap? ->
+                    if (bitmap != null) {
+                        onCaptured(bitmap)
+                    }
+                    GeckoResult.fromValue(null)
+                }
+            )
+        } catch (_: Throwable) {
+            // Manejo preventivo si la vista aún no está lista para capturar píxeles
+        }
     }
 
     /**

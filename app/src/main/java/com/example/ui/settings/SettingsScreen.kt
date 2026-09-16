@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Cookie
@@ -67,7 +68,8 @@ import com.example.viewmodel.BrowserViewModel
 @Composable
 fun SettingsScreen(
     viewModel: BrowserViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToCookies: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -228,6 +230,26 @@ fun SettingsScreen(
                             onCheckedChange = { viewModel.setCookiesEnabled(it) },
                             modifier = Modifier.testTag("setting_cookies_switch")
                         )
+                    }
+
+                    HorizontalDivider()
+
+                    // Administrador de Cookies de Navegación
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigateToCookies() }
+                            .padding(vertical = 10.dp)
+                            .testTag("setting_cookies_manager_row"),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Cookie, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Cookies de navegación", fontWeight = FontWeight.Medium)
+                            Text("Ver cookies por sitio, rastreadores y eliminarlas", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
                     HorizontalDivider()

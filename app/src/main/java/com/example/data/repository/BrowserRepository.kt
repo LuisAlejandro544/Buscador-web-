@@ -1,10 +1,12 @@
 package com.example.data.repository
 
 import com.example.data.local.dao.BookmarkDao
+import com.example.data.local.dao.CookieDao
 import com.example.data.local.dao.DownloadDao
 import com.example.data.local.dao.HistoryDao
 import com.example.data.local.dao.TabDao
 import com.example.data.local.entity.BookmarkEntity
+import com.example.data.local.entity.CookieEntity
 import com.example.data.local.entity.DownloadEntity
 import com.example.data.local.entity.HistoryEntity
 import com.example.data.local.entity.TabEntity
@@ -22,6 +24,7 @@ class BrowserRepository(
     private val bookmarkDao: BookmarkDao,
     private val historyDao: HistoryDao,
     private val downloadDao: DownloadDao,
+    private val cookieDao: CookieDao,
     private val preferences: BrowserPreferences
 ) {
     // --- Pestañas ---
@@ -40,6 +43,10 @@ class BrowserRepository(
     suspend fun getTabById(id: Long): TabEntity? = tabDao.getTabById(id)
 
     suspend fun getMostRecentActiveTab(): TabEntity? = tabDao.getMostRecentActiveTab()
+
+    suspend fun getAllTabsList(): List<TabEntity> = tabDao.getAllTabsList()
+
+    suspend fun updateTabLastActive(id: Long, timestamp: Long) = tabDao.updateTabLastActive(id, timestamp)
 
     suspend fun createTab(
         title: String,
@@ -121,6 +128,33 @@ class BrowserRepository(
     suspend fun deleteDownload(id: Long) = downloadDao.deleteDownloadById(id)
 
     suspend fun clearAllDownloads() = downloadDao.clearAllDownloads()
+
+    // --- Cookies de Navegación ---
+    fun getAllCookies(): Flow<List<CookieEntity>> = cookieDao.getAllCookies()
+
+    fun searchCookies(query: String): Flow<List<CookieEntity>> = cookieDao.searchCookies(query)
+
+    fun getTrackerCookies(): Flow<List<CookieEntity>> = cookieDao.getTrackerCookies()
+
+    fun getDistinctCookieDomains(): Flow<List<String>> = cookieDao.getDistinctDomains()
+
+    fun getCookiesByDomain(domain: String): Flow<List<CookieEntity>> = cookieDao.getCookiesByDomain(domain)
+
+    fun getCookieCount(): Flow<Int> = cookieDao.getCookieCount()
+
+    fun getTrackerCookieCount(): Flow<Int> = cookieDao.getTrackerCookieCount()
+
+    suspend fun addCookie(cookie: CookieEntity): Long = cookieDao.insertCookie(cookie)
+
+    suspend fun addCookies(cookies: List<CookieEntity>) = cookieDao.insertCookies(cookies)
+
+    suspend fun deleteCookieById(id: Long) = cookieDao.deleteCookieById(id)
+
+    suspend fun deleteCookiesByDomain(domain: String) = cookieDao.deleteCookiesByDomain(domain)
+
+    suspend fun deleteTrackerCookies() = cookieDao.deleteTrackerCookies()
+
+    suspend fun clearAllCookies() = cookieDao.clearAllCookies()
 
     // --- Preferencias y Ajustes ---
     val searchEngine: Flow<SearchEngine> = preferences.searchEngine

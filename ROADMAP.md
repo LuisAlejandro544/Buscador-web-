@@ -40,11 +40,26 @@ Este documento traza las fases de desarrollo, hitos completados y objetivos futu
 - [x] **Gestión de Diálogos Web:** Intercepción de llamadas nativas de scripts mediante `GeckoPromptHandler` (`PromptDelegate`), soportando alertas JS, confirmaciones, solicitud de texto, autenticación HTTP y selector de archivos `<input type="file">` presentados en Jetpack Compose con `WebPromptDialog`.
 - [x] **Pestañas Protegidas (Contenedores Aislados de Sesión):** Aislamiento estricto de sesiones y cookies por pestaña mediante `GeckoSessionSettings.Builder.contextId()`, persistencia con esquema Room v3 (`isProtected`, `contextId`), selector tripartito en `TabsScreen` y purga automática de cookies al cerrarse con `runtime.storageController.clearDataForSessionContext(contextId)`.
 - [x] **Infraestructura Nativa Rust/C++ (Scaffolding):** Configuración de CMake 3.31.6 (`app/src/main/cpp/CMakeLists.txt`), compilación de `libbrowser_native.so` con C++26, módulo base en Rust Edition 2024 (`core-native/Cargo.toml`, `src/lib.rs`), puente JNI en Kotlin (`NativeBridge.kt`) y soporte garantizado para 32 y 64 bits (`arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`).
+- [x] **Auditor y Administrador de Cookies de Navegación:** Nueva pantalla dedicada (`CookiesScreen`) con filtrado por dominio, categorización y detección de rastreadores publicitarios/telemetría, visualización de caducidad y atributos de seguridad (`Secure`, `HttpOnly`), y purga sincronizada con Room v4 y `GeckoRuntime.storageController`.
+- [x] **Estabilización Visual con Escala de Fuente Fija:** Inmunidad contra configuraciones de accesibilidad o tamaño de fuente global gigante de Android mediante `CompositionLocalProvider` (`fontScale = 1.0f`) y padding de navegación inferior para dispositivos móviles.
+- [x] **Miniaturas Visuales de Pestañas en Vivo:** Captura de pantalla dinámica en alta fidelidad mediante `GeckoDisplay.capturePixels()` almacenada en memoria y mostrada en las tarjetas de la cuadrícula de pestañas.
+- [x] **Suspensión / Hibernación Inteligente (5 minutos):** Monitor no invasivo que detecta pestañas inactivas durante 5 minutos para suspender la sesión GeckoView y liberar la memoria RAM del teléfono sin perder la URL, título ni miniatura.
+- [x] **Modo Incógnito y Creación Manual de Pestañas:** Transición y estandarización del término "Incógnito" en toda la interfaz, eliminando la creación automática accidental de pestañas en los apartados de Incógnito y Protegidas.
+- [x] **Blindaje Integral del Modo Incógnito (No Genérico):**
+  - **Protección contra Huella Digital (RFP - Resist Fingerprinting):** Simulación unificada de Canvas, WebGL, Audio y User-Agent genérico Tor/ESR para frustrar perfilados biométricos y de hardware del teléfono.
+  - **Bloqueo de Fugas WebRTC (Anti IP-Leak):** Desactivación completa de `media.peerconnection` y aislamiento STUN para salvaguardar las IPs reales.
+  - **DNS sobre HTTPS Cifrado (DoH):** Protocolo TRR activado con Mozilla/Cloudflare para evitar monitoreo del proveedor de telefonía móvil (ISP).
+  - **Total Cookie Protection (dFPI):** Aislamiento estricto de cookies por sitio web impidiendo el seguimiento entre dominios distintos.
+  - **Purga Inmediata de Memoria RAM al Cerrar:** Destrucción y limpieza forzada de cachés volátiles (`ALL_CACHES`, `AUTH_SESSIONS`), eliminación de miniaturas y recolección de basura con `System.gc()`.
+  - **Protección de Pantalla FLAG_SECURE:** Bloqueo de capturas de pantalla y ofuscación en la multitarea de Android durante la navegación anónima.
 - [x] **Flujo de Integración Continua (CI) y Entrega Directa P2P:** Workflow en GitHub Actions (`.github/workflows/build-debug.yml`) con activación exclusivamente manual (`workflow_dispatch`), compilación limpia sin caché (NDK 28, CMake 3.31, Rust 2024, GeckoView Omni), generación forzada de firma con `generate_debug_keystore.sh` y sincronización directa P2P desatendida mediante Syncthing a la carpeta `/storage/emulated/0/Navegador/app-debug.apk` del móvil.
 
 ---
 
 ### 🔵 Fase 3: Capacidades Avanzadas de Navegación, Privacidad y Lógica Rust (Siguiente)
+- [ ] **Expansión Continua de Seguridad en Modo Incógnito:**
+  - Incorporación de muchas más funciones de seguridad para que el modo incógnito no sea genérico: bloqueo heurístico de telemetría oculta en scripts, sandbox estricto de APIs de sensores (giroscopio, acelerómetro, batería), y rotación dinámica de identidades virtuales.
+  - Generación de informe de rastreo en tiempo real para verificar qué elementos intentaron perfilar al usuario y fueron neutralizados.
 - [ ] **Lógica de Seguridad en Rust (`core-native`):** Integración de filtros de bloqueo de publicidad y listas de rastreo procesadas en el crate Rust.
 - [ ] **Soporte de WebExtensions:** Integración de extensiones de Mozilla (bloqueadores de publicidad como uBlock Origin, gestores de scripts).
 - [ ] **Lector de Modo Lectura:** Extracción del contenido principal de artículos para lectura limpia sin anuncios ni estilos intrusivos.

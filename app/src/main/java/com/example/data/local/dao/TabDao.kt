@@ -51,6 +51,12 @@ interface TabDao {
     @Query("DELETE FROM tabs WHERE isProtected = 1")
     suspend fun clearProtectedTabs()
 
+    @Query("SELECT * FROM tabs ORDER BY orderIndex ASC, id ASC")
+    suspend fun getAllTabsList(): List<TabEntity>
+
+    @Query("UPDATE tabs SET lastActiveTimestamp = :timestamp WHERE id = :id")
+    suspend fun updateTabLastActive(id: Long, timestamp: Long)
+
     @Query("SELECT COUNT(*) FROM tabs WHERE isIncognito = :isIncognito")
     fun getTabCount(isIncognito: Boolean): Flow<Int>
 

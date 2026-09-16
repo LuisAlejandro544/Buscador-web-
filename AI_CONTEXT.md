@@ -77,3 +77,28 @@ Este archivo proporciona el contexto fundamental del proyecto para cualquier mod
    - **Sincronización Directa P2P al Móvil con Syncthing:** Se inicia un nodo local de Syncthing en el runner (usando identidad TLS fija en `.github/syncthing/` con ID `IAXLEGX-HNWFEWZ-P4OQVFW-VBKMPQ2-ZJI6MX6-OE6YPBD-S4BC346-266H4AO`) y el script `.github/scripts/syncthing_transfer.py` transfiere directamente `app-debug.apk` a la carpeta `/storage/emulated/0/Navegador` de la app **Syncthing-fork** en el teléfono mediante la red global P2P con relays cifrados.
    - **Secreto de Actions Requerido:** Únicamente `PHONE_SYNCTHING_ID` (el ID del teléfono en Syncthing). Si el teléfono no estuviera en línea o alcanzara el tiempo límite, el APK se preserva intacto en los artefactos descargables de GitHub como respaldo.
 
+7. **Auditoría y Gestión de Cookies de Navegación (`CookiesScreen.kt`):**
+   - **Esquema Room v4:** Persistencia en `CookieEntity` y `CookieDao` de cookies con metadatos clave (nombre, valor, dominio, ruta, caducidad, `isSecure`, `isHttpOnly`, `isTracker`).
+   - **Detección de Rastreadores:** Clasificación automatizada de dominios de telemetría y anuncios de terceros con advertencia visual y filtro dedicado.
+   - **Sincronización con GeckoView StorageController:** Purgas selectivas o totales coordinadas entre Room y el motor web mediante `storageController.clearDataFromHost(host, CLEAR_COOKIES)` y `storageController.clearData(CLEAR_COOKIES)`.
+   - **Punto de Entrada en UI:** Accesible desde el menú desplegable de 3 puntos del navegador y desde la sección de Privacidad en Ajustes.
+
+8. **Fijación de Escala Tipográfica para Móviles (`fontScale = 1.0f`):**
+   - **Inmunidad ante Fuentes Gigantes del Sistema:** Sobrescritura de `LocalDensity` en `Theme.kt` manteniendo la densidad de pantalla pero fijando estrictamente `fontScale = 1.0f`. Garantiza que las interfaces permanezcan perfectamente proporcionadas sin recortes ni desbordamientos en teléfonos donde el usuario tiene configurada una fuente de sistema extra grande.
+   - **Padding Táctil:** Inclusión de `navigationBarsPadding()` en la barra inferior para evitar solapamientos con la botonera de navegación de Android.
+
+9. **Miniaturas de Pestañas, Hibernación tras 5 Minutos y Modo Incógnito:**
+   - **Captura Gráfica de Miniaturas:** `TabThumbnailManager` y `GeckoViewEngine.captureThumbnail` capturan la pantalla web mediante `GeckoDisplay.capturePixels()` para mostrar exactamente dónde dejó el usuario cada pestaña al navegar o alternar.
+   - **Hibernación no Agresiva tras 5 Minutos:** Monitor de inactividad en `BrowserViewModel` que revisa periódicamente el tiempo de último uso (`lastActiveTimestamp`). Si una pestaña supera los 5 minutos sin foco, invoca `GeckoSessionManager.hibernateSession()` cerrando el proceso pesado de GeckoView para liberar RAM y batería en el móvil. Los metadatos y la miniatura permanecen visibles con el distintivo "En reposo (5 min)"; al tocar la pestaña, se despierta y restaura instantáneamente.
+   - **Creación Manual en Incógnito y Protegidas:** Los modos "Incógnito" y "Protegidas" ya no abren pestañas automáticas vacías al seleccionarlos; el usuario decide y crea manualmente cada sesión cuando realmente lo necesita.
+
+10. **Blindaje de Seguridad Avanzada para Modo Incógnito (No Genérico):**
+    - **Protección contra Huella Digital (Resist Fingerprinting - RFP):** Inyección de preferencias avanzadas estilo Tor (`privacy.resistFingerprinting = true`) para unificar resolución de pantalla, canvas hash, WebGL y audio fingerprint, junto a un User-Agent genérico Tor/ESR para evitar rastreos biométricos o del modelo exacto de teléfono.
+    - **Bloqueo de Fugas por WebRTC (Anti IP-Leak):** Desactivación completa de `media.peerconnection` y aislamiento STUN (`media.peerconnection.ice.no_host = true`, `media.peerconnection.ice.default_address_only = true`) sumado a denegación estricta de permisos de cámara/micrófono en `GeckoViewEngine`, impidiendo que scripts externos descubran la IP privada o pública del usuario.
+    - **DNS sobre HTTPS Cifrado (DoH):** Forzado de resolución cifrada mediante protocolo TRR (Trusted Recursive Resolver) apuntando a Cloudflare/Mozilla (`TRR_MODE_FIRST`), imposibilitando que operadores de telefonía o proveedores de internet (ISP) intercepten las solicitudes de dominios.
+    - **Protección Total de Cookies (Total Cookie Protection / dFPI):** Aislamiento dinámico estricto (`ACCEPT_FIRST_PARTY_AND_ISOLATE_OTHERS`, `privacy.partition.network_state = true`) confinando cualquier cookie o estado de almacenamiento al dominio de primer nivel sin permitir cruces entre sitios.
+    - **Purga de Memoria RAM Inmediata al Cerrar:** Al cerrar una pestaña de incógnito o limpiar el grupo privado, se purgan de inmediato las cachés volátiles (`ALL_CACHES` y `AUTH_SESSIONS`) con `storageController.clearData`, se destruyen las miniaturas en disco/RAM y se fuerza la recolección de basura con `System.gc()`.
+    - **Protección de Pantalla FLAG_SECURE:** Bloqueo de capturas de pantalla, grabadores externos y enmascaramiento visual en la vista de aplicaciones recientes de Android al entrar a incógnito.
+    - **Evolución Continua:** El modo incógnito continuará expandiéndose con capas defensivas adicionales (bloqueo heurístico de telemetría, ofuscación de red y sandboxing estricto) para que sea un entorno de navegación de máxima seguridad real, muy superior a los modos privados genéricos del mercado.
+
+

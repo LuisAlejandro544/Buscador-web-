@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Cookie
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
@@ -100,7 +102,8 @@ fun BrowserScreen(
     onNavigateToBookmarks: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    onNavigateToDownloads: () -> Unit
+    onNavigateToDownloads: () -> Unit,
+    onNavigateToCookies: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -207,7 +210,10 @@ fun BrowserScreen(
 
                         // Botón de Pestañas con Insignia de conteo
                         IconButton(
-                            onClick = onNavigateToTabs,
+                            onClick = {
+                                viewModel.captureCurrentTabThumbnail()
+                                onNavigateToTabs()
+                            },
                             modifier = Modifier.testTag("tabs_button")
                         ) {
                             BadgedBox(
@@ -261,7 +267,7 @@ fun BrowserScreen(
                             )
 
                             DropdownMenuItem(
-                                text = { Text(if (isIncognito) "Modo normal" else "Nueva pestaña privada") },
+                                text = { Text(if (isIncognito) "Modo normal" else "Modo incógnito") },
                                 leadingIcon = { Icon(Icons.Default.Security, contentDescription = null) },
                                 onClick = {
                                     isMenuExpanded = false
@@ -315,6 +321,16 @@ fun BrowserScreen(
                                     onNavigateToDownloads()
                                 },
                                 modifier = Modifier.testTag("menu_downloads")
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("Cookies de navegación") },
+                                leadingIcon = { Icon(Icons.Default.Cookie, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                onClick = {
+                                    isMenuExpanded = false
+                                    onNavigateToCookies()
+                                },
+                                modifier = Modifier.testTag("menu_cookies")
                             )
 
                             DropdownMenuItem(
@@ -386,15 +402,16 @@ fun BrowserScreen(
             }
         },
         bottomBar = {
-            BottomAppBar(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                containerColor = MaterialTheme.colorScheme.surface,
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 6.dp
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .height(56.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Botón Atrás

@@ -5,26 +5,29 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.data.local.dao.BookmarkDao
+import com.example.data.local.dao.CookieDao
 import com.example.data.local.dao.DownloadDao
 import com.example.data.local.dao.HistoryDao
 import com.example.data.local.dao.TabDao
 import com.example.data.local.entity.BookmarkEntity
+import com.example.data.local.entity.CookieEntity
 import com.example.data.local.entity.DownloadEntity
 import com.example.data.local.entity.HistoryEntity
 import com.example.data.local.entity.TabEntity
 
 /**
  * Base de datos Room principal del Navegador Web.
- * Contiene las tablas para gestión de pestañas, marcadores, historial y descargas.
+ * Contiene las tablas para gestión de pestañas, marcadores, historial, descargas y cookies de navegación.
  */
 @Database(
     entities = [
         TabEntity::class,
         BookmarkEntity::class,
         HistoryEntity::class,
-        DownloadEntity::class
+        DownloadEntity::class,
+        CookieEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class BrowserDatabase : RoomDatabase() {
@@ -33,6 +36,7 @@ abstract class BrowserDatabase : RoomDatabase() {
     abstract fun bookmarkDao(): BookmarkDao
     abstract fun historyDao(): HistoryDao
     abstract fun downloadDao(): DownloadDao
+    abstract fun cookieDao(): CookieDao
 
     companion object {
         @Volatile

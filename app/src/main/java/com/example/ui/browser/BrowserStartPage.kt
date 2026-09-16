@@ -146,7 +146,7 @@ fun BrowserStartPage(
                 Text(
                     text = when {
                         isProtected -> "Pestaña Protegida"
-                        isIncognito -> "Navegación Privada"
+                        isIncognito -> "Modo Incógnito Avanzado"
                         else -> "Navegador Web"
                     },
                     style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
@@ -187,7 +187,7 @@ fun BrowserStartPage(
                         Text(
                             text = when {
                                 isProtected -> "Burbuja aislada: Cookies y sesiones sin tocar tu perfil principal"
-                                isIncognito -> "Modo incógnito activo: Sin registro de cookies ni historial"
+                                isIncognito -> "Blindaje Activo: RFP, Anti-Fugas WebRTC, DoH, dFPI y Purga de RAM"
                                 else -> "Motor Mozilla GeckoView Omni: Renderizado nativo independiente"
                             },
                             style = MaterialTheme.typography.labelSmall,
@@ -196,6 +196,52 @@ fun BrowserStartPage(
                                 isIncognito -> MaterialTheme.colorScheme.onTertiaryContainer
                                 else -> MaterialTheme.colorScheme.onSecondaryContainer
                             }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Panel explicativo de seguridad cuando está en Modo Incógnito
+        if (isIncognito) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f)
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Security,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Seguridad Real Más Allá de un Incógnito Genérico",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        IncognitoFeatureRow("Anti-Huella Digital (RFP)", "Simula resoluciones y perfiles uniformes estilo Tor para engañar rastreadores.")
+                        IncognitoFeatureRow("Anti Fugas IP (WebRTC)", "PeerConnection desactivado y puertos STUN aislados para no revelar tu IP real.")
+                        IncognitoFeatureRow("DNS Cifrado (DoH)", "Consultas DNS sobre HTTPS directo a Cloudflare/Mozilla sin espionaje de tu operador.")
+                        IncognitoFeatureRow("Total Cookie Protection (dFPI)", "Contenedor hermético que impide a sitios rastrear entre webs distintas.")
+                        IncognitoFeatureRow("Purga Instantánea de RAM", "Destrucción total de memoria caché volátil y recolección de memoria al cerrar.")
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "💡 Seguimos incorporando activamente muchas más funciones de seguridad y privacidad para llevar la navegación anónima al máximo nivel.",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -451,5 +497,37 @@ private fun QuickAccessButton(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+/**
+ * Fila descriptiva para cada escudo de protección activa del Modo Incógnito Avanzado.
+ */
+@Composable
+private fun IncognitoFeatureRow(title: String, description: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = "•",
+            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(end = 6.dp)
+        )
+        Column {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }

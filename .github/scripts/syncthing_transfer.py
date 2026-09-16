@@ -62,12 +62,14 @@ def main():
 
     # 3. Generar archivo config.xml optimizado para sincronización P2P
     config_xml = f"""<configuration version="37">
-    <folder id="{FOLDER_ID}" label="Navegador" path="{share_dir}" type="sendonly" rescanIntervalS="2" fsWatcherEnabled="true" fsWatcherDelayS="1">
+    <folder id="{FOLDER_ID}" label="Navegador" path="{share_dir}" type="sendonly" rescanIntervalS="2" fsWatcherEnabled="true" fsWatcherDelayS="1" ignorePerms="true" autoNormalize="true">
         <filesystemType>basic</filesystemType>
         <device id="{RUNNER_DEVICE_ID}"></device>
         <device id="{phone_device_id}"></device>
         <minDiskFree unit="%">1</minDiskFree>
         <markerName>.stfolder</markerName>
+        <ignorePerms>true</ignorePerms>
+        <autoNormalize>true</autoNormalize>
     </folder>
     <device id="{RUNNER_DEVICE_ID}" name="GitHub Actions" compression="metadata" introducer="false">
         <address>dynamic</address>
@@ -86,8 +88,8 @@ def main():
         <relaysEnabled>true</relaysEnabled>
         <relayReconnectIntervalM>1</relayReconnectIntervalM>
         <natEnabled>true</natEnabled>
-        <reconnectionIntervalS>5</reconnectionIntervalS>
-        <progressUpdateIntervalS>2</progressUpdateIntervalS>
+        <reconnectionIntervalS>3</reconnectionIntervalS>
+        <progressUpdateIntervalS>1</progressUpdateIntervalS>
         <startBrowser>false</startBrowser>
     </options>
 </configuration>"""
@@ -134,10 +136,12 @@ def main():
     print("✅ Nodo Syncthing iniciado. Buscando teléfono en la red P2P...", flush=True)
     print("💡 Nota: Asegúrate de tener Syncthing-fork abierto en tu móvil.", flush=True)
 
-    max_seconds = 300  # 5 minutos máximo de espera
+    apk_size_bytes = os.path.getsize(dest_apk)
+    max_seconds = 1200  # 20 minutos máximo para permitir transferencias grandes completas sin corte
     start_time = time.time()
     last_print = 0
     synced = False
+    initial_transfer_detected = False
 
     while time.time() - start_time < max_seconds:
         elapsed = int(time.time() - start_time)
@@ -151,44 +155,106 @@ def main():
                 conns = json.loads(c_resp.read().decode("utf-8")).get("connections", {})
                 phone_conn = conns.get(phone_device_id, {})
                 is_connected = phone_conn.get("connected", False)
+                out_bytes = phone_conn.get("outBytesTotal", 0)
 
             if is_connected:
-                # Consultar progreso de sincronización hacia el teléfono
+                # Consultar estado de sincronización hacia el teléfono
                 comp_url = f"http://127.0.0.1:{GUI_PORT}/rest/db/completion?device={phone_device_id}&folder={FOLDER_ID}"
                 comp_req = urllib.request.Request(comp_url, headers={"X-API-Key": API_KEY})
                 with urllib.request.urlopen(comp_req, timeout=3) as comp_resp:
                     comp_data = json.loads(comp_resp.read().decode("utf-8"))
-                    completion = comp_data.get("completion", 0.0)
-                    need_bytes = comp_data.get("needBytes", 1)
+                    completion = float(comp_data.get("completion", 0.0))
+                    need_bytes = int(comp_data.get("needBytes", apk_size_bytes))
+                    global_bytes = int(comp_data.get("globalBytes", 0))
+                    remote_state = str(comp_data.get("remoteState", "")).lower()
 
-                if completion >= 100.0 or need_bytes == 0:
+                # Consultar disponibilidad específica de app-debug.apk en el clúster
+                file_is_on_phone = False
+                try:
+                    file_url = f"http://127.0.0.1:{GUI_PORT}/rest/db/file?folder={FOLDER_ID}&file=app-debug.apk"
+                    file_req = urllib.request.Request(file_url, headers={"X-API-Key": API_KEY})
+                    with urllib.request.urlopen(file_req, timeout=3) as f_resp:
+                        file_data = json.loads(f_resp.read().decode("utf-8"))
+                        avail = file_data.get("availability", [])
+                        file_is_on_phone = phone_device_id in avail
+                except Exception:
+                    file_is_on_phone = False
+
+                if out_bytes > 1024 * 1024 or need_bytes < apk_size_bytes or completion > 0.0:
+                    initial_transfer_detected = True
+
+                # Condición de éxito:
+                # 1. El catálogo global conoce el tamaño real del APK
+                # 2. El teléfono reporta 100% de bloques recibidos (o needBytes == 0 tras haber transferido)
+                # 3. O el archivo app-debug.apk ya aparece en la lista de disponibilidad remota
+                is_finished = (
+                    (file_is_on_phone) or
+                    (global_bytes >= apk_size_bytes and need_bytes == 0 and completion >= 100.0 and initial_transfer_detected)
+                )
+
+                if is_finished:
                     print("============================================================", flush=True)
-                    print("🎉 ¡Sincronización P2P completada al 100%!", flush=True)
-                    print("📲 El archivo app-debug.apk ya se encuentra en tu teléfono.", flush=True)
+                    print(f"📡 Transferencia de bloques completada (100%). Enviados: {out_bytes / (1024 * 1024):.1f} MB", flush=True)
+                    print("⏳ Permitiendo periodo de gracia para que Android verifique hashes,", flush=True)
+                    print("   escriba a almacenamiento flash y complete el renombrado atómico", flush=True)
+                    print("   de .syncthing.app-debug.apk.tmp a app-debug.apk...", flush=True)
+                    print("============================================================", flush=True)
+
+                    # Esperar hasta 40 segundos manteniendo la conexión activa para que el móvil
+                    # complete el renombramiento de .tmp a .apk sin cortar la conexión bruscamente
+                    grace_start = time.time()
+                    while time.time() - grace_start < 40:
+                        time.sleep(3)
+                        try:
+                            file_url = f"http://127.0.0.1:{GUI_PORT}/rest/db/file?folder={FOLDER_ID}&file=app-debug.apk"
+                            file_req = urllib.request.Request(file_url, headers={"X-API-Key": API_KEY})
+                            with urllib.request.urlopen(file_req, timeout=3) as f_resp:
+                                file_data = json.loads(f_resp.read().decode("utf-8"))
+                                if phone_device_id in file_data.get("availability", []):
+                                    print("✅ ¡Confirmación recibida! El teléfono ha renombrado y verificado app-debug.apk.", flush=True)
+                                    break
+                        except Exception:
+                            pass
+
+                    print("============================================================", flush=True)
+                    print("🎉 ¡Sincronización P2P completada exitosamente!", flush=True)
+                    print("📲 El archivo app-debug.apk ya se encuentra disponible para instalar en tu teléfono.", flush=True)
                     print("📂 Ruta: /storage/emulated/0/Navegador/app-debug.apk", flush=True)
                     print("============================================================", flush=True)
                     synced = True
                     break
                 else:
                     if elapsed - last_print >= 5:
-                        print(f"📡 Teléfono conectado. Transfiriendo APK: {completion:.1f}% ({elapsed}s)", flush=True)
+                        progress_pct = completion if completion > 0.0 else min(99.0, (out_bytes / apk_size_bytes) * 100.0)
+                        print(f"📡 Teléfono conectado. Transfiriendo APK: {progress_pct:.1f}% ({out_bytes / (1024 * 1024):.1f} MB enviados) [{elapsed}s]", flush=True)
                         last_print = elapsed
             else:
                 if elapsed - last_print >= 10:
                     print(f"🔍 Esperando conexión P2P con el teléfono... ({elapsed}s transcurridos / max {max_seconds}s)", flush=True)
                     last_print = elapsed
 
-        except Exception as e:
+        except Exception:
             time.sleep(2)
 
         time.sleep(2)
 
-    # Detener demonio
-    proc.terminate()
+    # Detener demonio de forma limpia mediante REST API shutdown si está disponible
     try:
+        shut_req = urllib.request.Request(
+            f"http://127.0.0.1:{GUI_PORT}/rest/system/shutdown",
+            data=b"",
+            headers={"X-API-Key": API_KEY},
+            method="POST"
+        )
+        urllib.request.urlopen(shut_req, timeout=3)
         proc.wait(timeout=5)
     except Exception:
-        proc.kill()
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            proc.kill()
+
     log_file.close()
 
     if not synced:

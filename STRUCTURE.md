@@ -24,14 +24,16 @@ app/src/main/
 │   ├── browser/
 │   │   ├── download/
 │   │   │   └── DownloadManagerHelper.kt # Gestor de descargas con integración al DownloadManager de Android
-│   │   └── engine/
-│   │       ├── BrowserEngineContract.kt # Interfaz abstracta que define las operaciones de navegación web
-│   │       ├── GeckoPromptHandler.kt    # Delegado GeckoView PromptDelegate para alertas, confirmaciones y ficheros
-│   │       ├── GeckoRuntimeProvider.kt  # Singleton de GeckoRuntime con optimización de memoria y ETP
-│   │       ├── GeckoSessionManager.kt   # Gestor concurrente de sesiones GeckoSession, aislamiento contextId y purga de datos
-│   │       ├── GeckoViewEngine.kt       # Implementación completa de BrowserEngineContract sobre GeckoView
-│   │       ├── NativeBridge.kt          # Puente Kotlin-JNI seguro para el subsistema C++26 y Rust
-│   │       └── WebPrompt.kt             # Modelos de eventos para diálogos nativos en Compose
+│   │   ├── engine/
+│   │   │   ├── BrowserEngineContract.kt # Interfaz abstracta que define las operaciones de navegación web
+│   │   │   ├── GeckoPromptHandler.kt    # Delegado GeckoView PromptDelegate para alertas, confirmaciones y ficheros
+│   │   │   ├── GeckoRuntimeProvider.kt  # Singleton de GeckoRuntime con optimización de memoria y ETP
+│   │   │   ├── GeckoSessionManager.kt   # Gestor concurrente de sesiones GeckoSession, aislamiento contextId, hibernación y purga de datos
+│   │   │   ├── GeckoViewEngine.kt       # Implementación completa de BrowserEngineContract sobre GeckoView con captura de miniaturas
+│   │   │   ├── NativeBridge.kt          # Puente Kotlin-JNI seguro para el subsistema C++26 y Rust
+│   │   │   └── WebPrompt.kt             # Modelos de eventos para diálogos nativos en Compose
+│   │   └── thumbnail/
+│   │       └── TabThumbnailManager.kt   # Gestor en memoria y caché de miniaturas capturadas de cada pestaña
 core-native/                         # Módulo de alto rendimiento en Rust (Edition 2024)
 ├── Cargo.toml                       # Manifiesto de dependencias y configuración staticlib/cdylib
 └── src/
@@ -40,15 +42,17 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   ├── local/
 │   │   ├── dao/
 │   │   │   ├── BookmarkDao.kt       # Acceso a marcadores guardados
+│   │   │   ├── CookieDao.kt         # Acceso, filtrado por sitio y purga de cookies y rastreadores
 │   │   │   ├── DownloadDao.kt       # Acceso y control del registro de descargas
 │   │   │   ├── HistoryDao.kt        # Acceso al historial cronológico de navegación
 │   │   │   └── TabDao.kt            # Acceso y persistencia de pestañas abiertas (normales y protegidas)
 │   │   ├── entity/
 │   │   │   ├── BookmarkEntity.kt    # Modelo relacional para marcadores
+│   │   │   ├── CookieEntity.kt      # Modelo relacional para cookies (dominio, valor, expiración, isTracker)
 │   │   │   ├── DownloadEntity.kt    # Modelo relacional para descargas (estado, bytes, URI)
 │   │   │   ├── HistoryEntity.kt     # Modelo relacional para historial
 │   │   │   └── TabEntity.kt         # Modelo relacional para pestañas (incluye flags isIncognito, isProtected y contextId)
-│   │   └── BrowserDatabase.kt       # Base de datos Room con control de versiones (v3) y migraciones
+│   │   └── BrowserDatabase.kt       # Base de datos Room con control de versiones (v4) y migraciones
 │   ├── model/
 │   │   ├── BrowserTab.kt            # Modelo de dominio para pestañas
 │   │   └── SearchEngine.kt          # Proveedores de búsqueda (DuckDuckGo, Google, Bing, etc.)
@@ -63,6 +67,8 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   │   └── BrowserScreen.kt         # Pantalla principal con contenedor GeckoView, omnibox y menú
 │   ├── components/
 │   │   └── WebPromptDialog.kt       # Diálogos nativos Material 3 para alerts, confirms, prompts y ficheros
+│   ├── cookies/
+│   │   └── CookiesScreen.kt         # Pantalla de auditoría de cookies, detección de rastreadores y borrado
 │   ├── downloads/
 │   │   └── DownloadsScreen.kt       # Pantalla avanzada de descargas con búsqueda, apertura y vaciado
 │   ├── history/
@@ -73,6 +79,7 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   ├── settings/
 │   │   └── SettingsScreen.kt        # Pantalla completa de ajustes y configuración del navegador
 │   ├── tabs/
+│   │   ├── TabCardItem.kt           # Tarjeta individual con renderizado de miniatura, distintivo de reposo y cierre
 │   │   └── TabsScreen.kt            # Pantalla en cuadrícula para gestionar pestañas normales, protegidas e incógnito
 │   └── theme/
 │       ├── Color.kt                 # Paleta de colores M3
@@ -124,6 +131,17 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 - **Seguridad en Modo Incógnito:** Las pestañas marcadas como `isIncognito = true` no se persisten en la tabla `tabs` de Room y su navegación no genera registros en `history`.
 - **Aislamiento por Pestañas Protegidas (Context Containers):** Cada pestaña protegida opera con su propio `contextId` inyectado en `GeckoSessionSettings.Builder`. Esto crea una partición estricta de cookies, caché web y `localStorage`. Al eliminarse la pestaña, `GeckoSessionManager` destruye la sesión y limpia el contexto en el motor invocando `runtime.storageController.clearDataForSessionContext(contextId)`.
 - **Soporte GeckoView:** La infraestructura de Gradle importa `geckoview-omni` e incluye soporte nativo legacy para empaquetado de librerías ELF `.so` (`libxul.so`, etc.), permitiendo instanciar `GeckoRuntime` y `GeckoSession` implementando el contrato `BrowserEngineContract`.
+- **Auditoría de Cookies y Eliminación Sincronizada:** El módulo `ui/cookies/CookiesScreen.kt` audita cookies locales indexadas en Room v4 e interactúa con `GeckoRuntime.storageController` para purgas por host o globales. Incorpora heurísticas para etiquetar cookies rastreadoras de terceros (`isTracker = true`) y advertir al usuario en la interfaz.
+- **Inmunidad de Tipografía Móvil (`fontScale = 1.0f`):** En `Theme.kt`, se inyecta una instancia personalizada de `Density` mediante `CompositionLocalProvider(LocalDensity provides ...)`. Esto desvincula la interfaz del multiplicador de fuente global del sistema operativo del dispositivo, asegurando proporciones estables en cualquier pantalla de teléfono sin importar el tamaño de letra configurado en Android.
+- **Miniaturas Gráficas y Suspensión Inteligente (5 min):** `TabThumbnailManager` almacena capturas escaladas de las páginas visitadas mediante `GeckoDisplay.capturePixels()`. Paralelamente, `BrowserViewModel` evalúa el tiempo de inactividad de las pestañas cada 15 segundos; si una pestaña supera los 5 minutos sin foco, invoca `GeckoSessionManager.hibernateSession()` cerrando el proceso de GeckoView y liberando memoria RAM del teléfono. La miniatura y el estado visual permanecen intactos en la cuadrícula indicando "En reposo (5 min)"; al tocar la pestaña, la sesión se reactiva automáticamente.
+- **Blindaje Avanzado del Modo Incógnito (No Genérico):**
+  - **RFP (Resist Fingerprinting):** Configuración activa de preferencias estilo Tor (`privacy.resistFingerprinting = true`) enmascarando métricas de pantalla, canvas, APIs de audio y User-Agent genérico Tor/ESR para frustrar el fingerprinting biométrico y del dispositivo móvil.
+  - **Anti IP-Leak (WebRTC Bloqueado):** Desactivación estricta de `media.peerconnection` y aislamiento STUN, junto a un `permissionDelegate` en `GeckoViewEngine` que rechaza solicitudes de cámara y micrófono en incógnito para impedir fugas de direcciones IP privadas y públicas.
+  - **DNS sobre HTTPS Cifrado (DoH):** Forzado de resolución cifrada con Cloudflare/Mozilla (`TRR_MODE_FIRST`), imposibilitando el espionaje o filtrado de tráfico por parte de proveedores de internet y operadoras móviles.
+  - **Total Cookie Protection (dFPI):** Confinamiento de cookies y almacenamiento al dominio de primer nivel (`ACCEPT_FIRST_PARTY_AND_ISOLATE_OTHERS`, `privacy.partition.network_state = true`), previniendo el rastreo cruzado entre sitios.
+  - **Purga Inmediata de RAM:** Al cerrar cualquier pestaña de incógnito o salir del modo, `GeckoSessionManager` y `GeckoRuntimeProvider` ejecutan `storageController.clearData(ALL_CACHES or AUTH_SESSIONS)`, destruyen miniaturas y disparan `System.gc()`.
+  - **Protección Visual FLAG_SECURE:** Bloqueo de capturas de pantalla y ocultación visual en la multitarea de Android al navegar en incógnito.
+  - **Arquitectura Abierta para Expansión Continua:** El motor de incógnito está concebido para incorporar progresivamente más capas de defensa activa (bloqueo heurístico de telemetría oculta en scripts, virtualización de red y sandboxing riguroso).
 - **Capa Nativa Híbrida (C++26 / Rust 2024):** Preparada mediante NDK r28 y CMake 3.31+ para vincular librerías `.so` de alto rendimiento. Rust asume la lógica pesada de seguridad (bloqueo de anuncios, hashes criptográficos, protección de rastreo) y C++ proporciona aceleración por hardware y enlace con APIs nativas del sistema. Los artefactos temporales de compilación de CMake y Cargo quedan completamente aislados por `.gitignore`.
 - **Canal de Despliegue P2P (GitHub Actions + Syncthing):** El flujo en `.github/workflows/build-debug.yml` implementa entrega continua sin intermediarios: compila el APK Debug de forma limpia (sin cachés), genera una firma `debug.keystore` fresca y transfiere el binario directamente al almacenamiento del móvil (`/storage/emulated/0/Navegador/app-debug.apk`) a través del protocolo P2P de Syncthing con relays globales cifrados de extremo a extremo.
 

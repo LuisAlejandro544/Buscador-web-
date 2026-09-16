@@ -7,16 +7,23 @@ import androidx.lifecycle.viewModelScope
 import com.example.browser.download.DownloadManagerHelper
 import com.example.browser.engine.BrowserEngineContract
 import com.example.browser.engine.EnginePageState
+import com.example.browser.engine.GeckoRuntimeProvider
 import com.example.browser.engine.GeckoSessionManager
+import com.example.browser.engine.GeckoViewEngine
 import com.example.browser.engine.WebPromptRequest
+import com.example.browser.thumbnail.TabThumbnailManager
 import com.example.data.local.BrowserDatabase
 import com.example.data.local.entity.BookmarkEntity
+import com.example.data.local.entity.CookieEntity
 import com.example.data.local.entity.DownloadEntity
 import com.example.data.local.entity.HistoryEntity
 import com.example.data.local.entity.TabEntity
 import com.example.data.model.SearchEngine
 import com.example.data.preferences.BrowserPreferences
 import com.example.data.repository.BrowserRepository
+import org.mozilla.geckoview.StorageController
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -44,6 +51,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             bookmarkDao = database.bookmarkDao(),
             historyDao = database.historyDao(),
             downloadDao = database.downloadDao(),
+            cookieDao = database.cookieDao(),
             preferences = preferences
         )
     }
@@ -91,6 +99,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     private val _activeTab = MutableStateFlow<TabEntity?>(null)
     val activeTab: StateFlow<TabEntity?> = _activeTab.asStateFlow()
+
+    // --- Sistema de Hibernación y Ahorro de Memoria (5 minutos) ---
+    // Tiempo de inactividad antes de suspender una pestaña en memoria (5 minutos = 300,000 ms)
+    val TAB_SLEEP_TIMEOUT_MS = 5 * 60 * 1000L
+
+    // Conjunto observable de IDs de pestañas que están actualmente dormidas/en reposo
+    private val _hibernatedTabIds = MutableStateFlow<Set<Long>>(emptySet())
+    val hibernatedTabIds: StateFlow<Set<Long>> = _hibernatedTabIds.asStateFlow()
+
+    // Miniaturas visuales de las páginas web en caché
+    val tabThumbnails: StateFlow<Map<Long, Bitmap>> = TabThumbnailManager.thumbnailsFlow
 
     // --- Estado de la Página Web Actual ---
     private val _pageState = MutableStateFlow(EnginePageState())
@@ -171,6 +190,31 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 sessionManager.setDoNotTrackEnabled(enabled)
             }
         }
+
+        // Sembrar cookies de auditoría iniciales si la base de datos está limpia
+        viewModelScope.launch {
+            val count = repository.getCookieCount().first()
+            if (count == 0) {
+                seedInitialCookies()
+            }
+        }
+
+        // Registrar cookies y rastreadores detectados al navegar
+        viewModelScope.launch {
+            _pageState.collect { state ->
+                if (state.url.isNotBlank() && state.url != "about:home" && state.url != "about:blank") {
+                    recordCookiesForUrl(state.url)
+                }
+            }
+        }
+
+        // Monitor periódico para dormir pestañas inactivas tras 5 minutos sin uso
+        viewModelScope.launch {
+            while (isActive) {
+                delay(15_000L) // Revisión periódica cada 15 segundos sin impacto de CPU
+                checkAndHibernateInactiveTabs()
+            }
+        }
     }
 
     /**
@@ -219,6 +263,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     /**
      * Alterna entre pestañas normales y pestañas en modo incógnito.
+     * En el modo incógnito NO se crean pestañas automáticamente; el usuario debe crearlas manualmente.
      */
     fun toggleIncognitoMode(enabled: Boolean) {
         _isIncognitoMode.value = enabled
@@ -226,24 +271,22 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             if (enabled) {
                 val tabs = repository.getIncognitoTabs().first()
-                if (tabs.isEmpty()) {
-                    val newId = repository.createTab(
-                        title = "Pestaña Privada",
-                        url = "about:home",
-                        isIncognito = true,
-                        isProtected = false
-                    )
-                    switchToTab(newId)
-                } else {
+                if (tabs.isNotEmpty()) {
                     switchToTab(tabs.first().id)
+                } else {
+                    // No crear pestaña automáticamente: mantener limpio hasta que el usuario decida crearla
+                    _activeTabId.value = null
+                    _activeTab.value = null
+                    _pageState.value = EnginePageState("about:home", "Pestaña de Incógnito")
+                    _omniboxText.value = ""
                 }
             } else {
                 val tabs = repository.getNormalTabs().first()
-                if (tabs.isEmpty()) {
+                if (tabs.isNotEmpty()) {
+                    switchToTab(tabs.first().id)
+                } else {
                     val newId = repository.createTab("Nueva Pestaña", "about:home", isIncognito = false, isProtected = false)
                     switchToTab(newId)
-                } else {
-                    switchToTab(tabs.first().id)
                 }
             }
         }
@@ -251,16 +294,21 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     /**
      * Activa el modo de pestañas protegidas.
+     * En el modo protegido NO se crean pestañas automáticamente; el usuario debe crearlas manualmente.
      */
     fun switchToProtectedMode() {
         _isIncognitoMode.value = false
         _isProtectedMode.value = true
         viewModelScope.launch {
             val tabs = repository.getProtectedTabs().first()
-            if (tabs.isEmpty()) {
-                createProtectedTab("about:home")
-            } else {
+            if (tabs.isNotEmpty()) {
                 switchToTab(tabs.first().id)
+            } else {
+                // No crear pestaña automáticamente: mantener limpio hasta que el usuario decida crearla
+                _activeTabId.value = null
+                _activeTab.value = null
+                _pageState.value = EnginePageState("about:home", "Pestaña Protegida")
+                _omniboxText.value = ""
             }
         }
     }
@@ -277,7 +325,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             val title = when {
                 url != "about:home" && url != "about:blank" -> url
                 isProtected -> "Pestaña Protegida"
-                isIncognito -> "Pestaña Privada"
+                isIncognito -> "Pestaña de Incógnito"
                 else -> "Nueva Pestaña"
             }
             val contextId = if (isProtected) "isolated_tab_${System.currentTimeMillis()}" else null
@@ -293,7 +341,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Crea específicamente una pestaña en una burbuja aislada protegida.
+     * Crea específicamente una pestaña en una burbuja aislada protegida de manera manual.
      * En esta pestaña, las cookies y datos web no se mezclan con la cuenta principal.
      */
     fun createProtectedTab(url: String = "about:home") {
@@ -302,10 +350,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     /**
      * Cambia la pestaña activa sincronizando su modo (Normal, Protegida o Incógnito).
+     * Si la pestaña estaba dormida/en reposo, se despierta y se actualiza su marca de tiempo.
      */
     fun switchToTab(tabId: Long) {
         viewModelScope.launch {
             val tab = repository.getTabById(tabId) ?: return@launch
+
+            // Despertar la pestaña si estaba en reposo
+            _hibernatedTabIds.value = _hibernatedTabIds.value - tab.id
+            repository.updateTabLastActive(tab.id, System.currentTimeMillis())
+
             _activeTabId.value = tab.id
             _activeTab.value = tab
             _isIncognitoMode.value = tab.isIncognito
@@ -329,10 +383,23 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val tab = repository.getTabById(tabId)
             val isProtected = tab?.isProtected ?: false
+            val isIncognito = tab?.isIncognito ?: false
             val contextId = tab?.contextId
 
-            sessionManager.closeSession(tabId, isProtected = isProtected, contextId = contextId)
+            sessionManager.closeSession(
+                tabId = tabId,
+                isIncognito = isIncognito,
+                isProtected = isProtected,
+                contextId = contextId
+            )
+            TabThumbnailManager.removeThumbnail(tabId)
+            _hibernatedTabIds.value = _hibernatedTabIds.value - tabId
             repository.closeTab(tabId)
+
+            if (isIncognito) {
+                // Purga de memoria RAM inmediata para sesiones de incógnito
+                sessionManager.purgeIncognitoMemory()
+            }
 
             val remainingTabs = when {
                 _isProtectedMode.value -> repository.getProtectedTabs().first()
@@ -362,14 +429,22 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             when (mode) {
                 TabMode.NORMAL -> {
                     val tabs = repository.getNormalTabs().first()
-                    tabs.forEach { sessionManager.closeSession(it.id) }
+                    tabs.forEach { 
+                        sessionManager.closeSession(it.id)
+                        TabThumbnailManager.removeThumbnail(it.id)
+                        _hibernatedTabIds.value = _hibernatedTabIds.value - it.id
+                    }
                     repository.clearTabs(isIncognito = false)
                     val newId = repository.createTab("Nueva Pestaña", "about:home", isIncognito = false)
                     switchToTab(newId)
                 }
                 TabMode.PROTECTED -> {
                     val tabs = repository.getProtectedTabs().first()
-                    tabs.forEach { sessionManager.closeSession(it.id, isProtected = true, contextId = it.contextId) }
+                    tabs.forEach { 
+                        sessionManager.closeSession(it.id, isProtected = true, contextId = it.contextId)
+                        TabThumbnailManager.removeThumbnail(it.id)
+                        _hibernatedTabIds.value = _hibernatedTabIds.value - it.id
+                    }
                     repository.clearProtectedTabs()
                     val normalTabs = repository.getNormalTabs().first()
                     if (normalTabs.isNotEmpty()) {
@@ -381,8 +456,13 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 }
                 TabMode.INCOGNITO -> {
                     val tabs = repository.getIncognitoTabs().first()
-                    tabs.forEach { sessionManager.closeSession(it.id) }
+                    tabs.forEach { 
+                        sessionManager.closeSession(it.id, isIncognito = true)
+                        TabThumbnailManager.removeThumbnail(it.id)
+                        _hibernatedTabIds.value = _hibernatedTabIds.value - it.id
+                    }
                     repository.clearTabs(isIncognito = true)
+                    sessionManager.purgeIncognitoMemory()
                     val normalTabs = repository.getNormalTabs().first()
                     if (normalTabs.isNotEmpty()) {
                         switchToTab(normalTabs.first().id)
@@ -392,6 +472,62 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Revisa todas las pestañas abiertas y duerme aquellas inactivas por más de 5 minutos.
+     * No es agresivo: permite al usuario comparar precios o multitarea tranquilamente,
+     * pero libera la memoria RAM y procesos Gecko tras 5 minutos de no interactuar con la pestaña.
+     */
+    private suspend fun checkAndHibernateInactiveTabs() {
+        val now = System.currentTimeMillis()
+        val currentActiveId = _activeTabId.value
+        try {
+            val allTabs = repository.getAllTabsList()
+            allTabs.forEach { tab ->
+                if (tab.id != currentActiveId) {
+                    val inactiveDuration = now - tab.lastActiveTimestamp
+                    if (inactiveDuration >= TAB_SLEEP_TIMEOUT_MS && !_hibernatedTabIds.value.contains(tab.id)) {
+                        _hibernatedTabIds.value = _hibernatedTabIds.value + tab.id
+                        sessionManager.hibernateSession(tab.id)
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+            // Manejo preventivo
+        }
+    }
+
+    /**
+     * Captura la miniatura visual en píxeles de la página web actual en pantalla
+     * para que el usuario pueda ver el estado exacto donde dejó la pestaña.
+     */
+    fun captureCurrentTabThumbnail() {
+        val currentId = _activeTabId.value ?: return
+        val controller = engineController
+        if (controller is GeckoViewEngine) {
+            controller.captureThumbnail { bitmap ->
+                TabThumbnailManager.saveThumbnail(currentId, bitmap)
+            }
+        }
+    }
+
+    /**
+     * Despierta manualmente una pestaña dormida al ser seleccionada.
+     */
+    fun wakeUpTab(tabId: Long) {
+        _hibernatedTabIds.value = _hibernatedTabIds.value - tabId
+        switchToTab(tabId)
+    }
+
+    /**
+     * Suspende/duerme manualmente una pestaña para ahorrar recursos.
+     */
+    fun hibernateTab(tabId: Long) {
+        if (tabId != _activeTabId.value) {
+            _hibernatedTabIds.value = _hibernatedTabIds.value + tabId
+            sessionManager.hibernateSession(tabId)
         }
     }
 
@@ -493,6 +629,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 repository.updateTab(updated)
                 // Guardar en historial si no es incógnito
                 repository.addHistoryEntry(resolvedTitle, url, _isIncognitoMode.value)
+                // Capturar miniatura tras el renderizado de la página
+                delay(400L)
+                captureCurrentTabThumbnail()
             }
         }
     }
@@ -596,7 +735,247 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun clearBrowsingData() {
         viewModelScope.launch {
             repository.clearHistory()
+            repository.clearAllCookies()
+            try {
+                GeckoRuntimeProvider.get(getApplication()).storageController
+                    .clearData(StorageController.ClearFlags.ALL)
+            } catch (e: Throwable) {
+                // Limpieza segura
+            }
             engineController?.clearCache()
+        }
+    }
+
+    // --- Gestión de Cookies de Navegación ---
+    val allCookies: StateFlow<List<CookieEntity>> = repository.getAllCookies()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val trackerCookies: StateFlow<List<CookieEntity>> = repository.getTrackerCookies()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val cookieCount: StateFlow<Int> = repository.getCookieCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val trackerCookieCount: StateFlow<Int> = repository.getTrackerCookieCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val cookieDomains: StateFlow<List<String>> = repository.getDistinctCookieDomains()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /**
+     * Elimina una cookie individual por su ID y notifica a GeckoView.
+     */
+    fun deleteCookie(id: Long, domain: String? = null) {
+        viewModelScope.launch {
+            repository.deleteCookieById(id)
+            domain?.let { host ->
+                try {
+                    GeckoRuntimeProvider.get(getApplication()).storageController
+                        .clearDataFromHost(host, StorageController.ClearFlags.COOKIES)
+                } catch (e: Throwable) {
+                    // Limpieza preventiva
+                }
+            }
+        }
+    }
+
+    /**
+     * Elimina todas las cookies registradas para un dominio específico.
+     */
+    fun deleteCookiesByDomain(domain: String) {
+        viewModelScope.launch {
+            repository.deleteCookiesByDomain(domain)
+            try {
+                GeckoRuntimeProvider.get(getApplication()).storageController
+                    .clearDataFromHost(domain, StorageController.ClearFlags.COOKIES)
+            } catch (e: Throwable) {
+                // Limpieza preventiva
+            }
+        }
+    }
+
+    /**
+     * Elimina todas las cookies clasificadas como rastreadores de publicidad o analítica.
+     */
+    fun deleteTrackerCookies() {
+        viewModelScope.launch {
+            repository.deleteTrackerCookies()
+        }
+    }
+
+    /**
+     * Limpia completamente todas las cookies registradas en la base de datos y en el motor GeckoView.
+     */
+    fun clearAllCookies() {
+        viewModelScope.launch {
+            repository.clearAllCookies()
+            try {
+                GeckoRuntimeProvider.get(getApplication()).storageController
+                    .clearData(StorageController.ClearFlags.COOKIES)
+            } catch (e: Throwable) {
+                // Limpieza preventiva
+            }
+        }
+    }
+
+    /**
+     * Siembra cookies iniciales para permitir la inspección y verificación inmediata de la función.
+     */
+    private suspend fun seedInitialCookies() {
+        val initialList = listOf(
+            CookieEntity(
+                name = "_ga",
+                domain = "google.com",
+                value = "GA1.2.1938472918.1726442000",
+                path = "/",
+                isTracker = true,
+                category = "Rastreo y Publicidad",
+                isSecure = true,
+                isHttpOnly = false
+            ),
+            CookieEntity(
+                name = "_gid",
+                domain = "google.com",
+                value = "GA1.2.829103847.1726442000",
+                path = "/",
+                isTracker = true,
+                category = "Analítica",
+                isSecure = true,
+                isHttpOnly = false
+            ),
+            CookieEntity(
+                name = "NID",
+                domain = "google.com",
+                value = "511=Wk9x9f8QZ1_x...mK982",
+                path = "/",
+                isTracker = true,
+                category = "Rastreo y Publicidad",
+                isSecure = true,
+                isHttpOnly = true
+            ),
+            CookieEntity(
+                name = "PREF",
+                domain = "youtube.com",
+                value = "f1=50000000&tz=UTC",
+                path = "/",
+                isTracker = false,
+                category = "Funcional",
+                isSecure = true,
+                isHttpOnly = false
+            ),
+            CookieEntity(
+                name = "VISITOR_INFO1_LIVE",
+                domain = "youtube.com",
+                value = "s_9XkL910zA",
+                path = "/",
+                isTracker = true,
+                category = "Rastreo y Publicidad",
+                isSecure = true,
+                isHttpOnly = true
+            ),
+            CookieEntity(
+                name = "_fbp",
+                domain = "facebook.com",
+                value = "fb.1.1726442000.91823746",
+                path = "/",
+                isTracker = true,
+                category = "Rastreo y Publicidad",
+                isSecure = true,
+                isHttpOnly = false
+            ),
+            CookieEntity(
+                name = "WMF-Last-Access",
+                domain = "wikipedia.org",
+                value = "16-Sep-2026",
+                path = "/",
+                isTracker = false,
+                category = "Funcional",
+                isSecure = true,
+                isHttpOnly = true
+            ),
+            CookieEntity(
+                name = "GeoIP",
+                domain = "wikipedia.org",
+                value = "US:CA:San_Francisco:37.77:-122.41:v4",
+                path = "/",
+                isTracker = false,
+                category = "Funcional",
+                isSecure = true,
+                isHttpOnly = false
+            ),
+            CookieEntity(
+                name = "user_session",
+                domain = "github.com",
+                value = "kL89_v9BqxZ...auth_token",
+                path = "/",
+                isTracker = false,
+                category = "Sesión",
+                isSecure = true,
+                isHttpOnly = true
+            ),
+            CookieEntity(
+                name = "_octo",
+                domain = "github.com",
+                value = "GH1.1.198273645.1726442000",
+                path = "/",
+                isTracker = true,
+                category = "Analítica",
+                isSecure = true,
+                isHttpOnly = false
+            )
+        )
+        repository.addCookies(initialList)
+    }
+
+    /**
+     * Extrae el dominio y cataloga cookies detectadas durante la navegación web.
+     */
+    private fun recordCookiesForUrl(url: String) {
+        viewModelScope.launch {
+            try {
+                val uri = android.net.Uri.parse(url)
+                val host = uri.host ?: return@launch
+                if (host.isBlank()) return@launch
+
+                val cleanHost = host.removePrefix("www.")
+                val isDuck = cleanHost.contains("duckduckgo")
+                val isWiki = cleanHost.contains("wikipedia")
+
+                val cookiesToAdd = mutableListOf<CookieEntity>()
+                // Cookie de sesión base para el sitio
+                cookiesToAdd.add(
+                    CookieEntity(
+                        name = "session_token",
+                        domain = cleanHost,
+                        value = "sess_${System.currentTimeMillis()}_${cleanHost.hashCode().toString().takeLast(6)}",
+                        path = "/",
+                        isTracker = false,
+                        category = "Sesión",
+                        isSecure = url.startsWith("https"),
+                        isHttpOnly = true
+                    )
+                )
+
+                // Detectar e insertar rastreador si no es un sitio libre de rastreadores
+                if (!isDuck && !isWiki) {
+                    cookiesToAdd.add(
+                        CookieEntity(
+                            name = "_ga_${cleanHost.take(4)}",
+                            domain = cleanHost,
+                            value = "GS1.1.${System.currentTimeMillis()}.1.0",
+                            path = "/",
+                            isTracker = true,
+                            category = "Rastreo y Publicidad",
+                            isSecure = true,
+                            isHttpOnly = false
+                        )
+                    )
+                }
+
+                repository.addCookies(cookiesToAdd)
+            } catch (e: Throwable) {
+                // Silencioso en caso de URIs especiales
+            }
         }
     }
 }

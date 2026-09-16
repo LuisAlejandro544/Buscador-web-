@@ -9,10 +9,28 @@ Navegador web moderno, modular y extensible para dispositivos Android (Android 1
 ### 🧭 Navegación y Motor Web GeckoView
 - **Motor Web de Alto Rendimiento con GeckoView Omni**: Navegación web potenciada por el motor de renderizado de Mozilla, ofreciendo cumplimiento de estándares web modernos, aislamiento de procesos y alta fidelidad visual.
 - **Pestañas Protegidas (Burbuja Aislada de Cookies y Sesiones)**: Navegación en contenedores contextuales independientes (`contextId`). Si visitas una web, aceptas cookies o inicias sesión en una pestaña protegida, sus datos y almacenamiento web quedan herméticamente confinados a esa pestaña sin alterar tus cuentas o perfiles principales. Al cerrarla, su contexto se limpia por completo con `clearDataForSessionContext`.
+- **Modo Incógnito Avanzado con Blindaje Activo (No Genérico)**:
+  - 🛡️ **Protección contra Huella Digital (Resist Fingerprinting - RFP):** Inyección de parámetros estilo Tor que neutralizan intentos de identificación biométrica o de hardware unificando dimensiones de pantalla, canvas, APIs de audio y User-Agent genérico Tor/ESR.
+  - 🌐 **Bloqueo de Fugas WebRTC (Anti IP-Leak):** `media.peerconnection` desactivado por completo y puertos STUN herméticos junto a denegación estricta de permisos de cámara/micrófono para que ningún script externo descubra tu IP real.
+  - 🔒 **DNS sobre HTTPS Cifrado (DoH):** Resolución cifrada obligatoria con Cloudflare/Mozilla (`TRR_MODE_FIRST`), impidiendo que proveedores de internet (ISP) o redes Wi-Fi públicas espíen los sitios que visitas.
+  - 🍪 **Total Cookie Protection (dFPI):** Aislamiento estricto de almacenamiento y cookies confinado exclusivamente al host de origen (`ACCEPT_FIRST_PARTY_AND_ISOLATE_OTHERS`), impidiendo el rastreo cruzado entre plataformas.
+  - ⚡ **Purga Inmediata de Memoria RAM al Cerrar:** Destrucción y limpieza forzada instantánea de cachés en memoria (`storageController.clearData(ALL_CACHES or AUTH_SESSIONS)`), borrado de miniaturas y recolección de basura con `System.gc()`.
+  - 👁️ **Protección de Pantalla FLAG_SECURE:** Bloqueo de capturas de pantalla, grabadores externos y ocultación visual en la multitarea de Android.
+  - 🚀 **Evolución Continua:** Diseñado con arquitectura modular para seguir incorporando activamente muchas más capas de seguridad (defensa heurística de scripts, sandboxing de sensores y ofuscación de red) para convertir el modo incógnito en un auténtico bastión de privacidad.
 - **Sincronización Dinámica de Ajustes**: Modificaciones instantáneas de preferencias (JavaScript activado/desactivado, cabecera *Do Not Track* `DNT: 1`, modo escritorio por pestaña o global) aplicadas directamente sobre las sesiones activas de GeckoView sin necesidad de reiniciar la app.
 - **Gestión Nativa de Diálogos Web**: Integración de `PromptDelegate` mediante `GeckoPromptHandler` y diálogo nativo en Compose (`WebPromptDialog`), interceptando de manera segura alertas JavaScript (`alert`), diálogos de confirmación (`confirm`), campos de entrada (`prompt`), autenticación HTTP y selección de archivos locales (`<input type="file">`).
 - **Modo Normal, Protegido e Incógnito**: Tres modos de navegación diferenciados: normal (persistencia estándar), protegida (aislamiento por contenedor contextual) e incógnito (sin rastro de historial ni cookies locales).
 - **Omnibox inteligente**: Barra de direcciones y búsqueda integrada con detección de URLs y compatibilidad con DuckDuckGo, Google, Bing, Brave y Ecosia.
+
+### 🍪 Gestor y Auditor de Cookies de Navegación
+- **Auditoría Detallada:** Visualización en tiempo real de todas las cookies almacenadas, detallando nombre, dominio de procedencia, ruta, caducidad y atributos de seguridad (`Secure`, `HttpOnly`).
+- **Detección de Rastreadores (Trackers):** Identificación automática de cookies de telemetría y publicidad de terceros con distintivo rojo y filtro rápido ("Solo rastreadores").
+- **Control Selectivo y Masivo:** Posibilidad de inspeccionar o eliminar cookies individuales por dominio, purgar todas las cookies de rastreo con un solo toque o vaciar el almacén completo.
+- **Sincronización con GeckoView StorageController:** La eliminación en la app coordina la purga en la base de datos Room y en el motor `GeckoRuntime.storageController` (`clearDataFromHost` y `clearData`).
+
+### 🔤 Interfaz Optimizada y Escala de Fuente Fija
+- **Diseño Móvil Estable:** Tamaño de fuente fijado a escala `1.0f` (`CompositionLocalProvider` sobre `LocalDensity`) para evitar que las configuraciones de accesibilidad o tamaño de texto gigante del sistema operativo Android desborden o rompan los componentes visuales de la app.
+- **Navegación Táctil Cómoda:** Barras de herramientas con `navigationBarsPadding()` adaptadas para no interferir con los botones virtuales o gestos de navegación de Android.
 
 ### 📥 Gestor de Descargas Avanzado
 - **Intercepción Automática:** Detección de descargas mediante cabeceras `Content-Disposition` o tipos de archivos descargables desde GeckoView (`WebResponse`).
@@ -21,8 +39,11 @@ Navegador web moderno, modular y extensible para dispositivos Android (Android 1
 - **Pantalla Dedicada:** Búsqueda rápida de descargas, apertura con visores del sistema Android y opciones para limpiar el historial.
 
 ### 📑 Gestión Avanzada de Pestañas
-- **Pestañas múltiples independientes**: Pantalla dedicada en cuadrícula con segmentación tripartita para gestionar pestañas **Normales**, **Protegidas** (aisladas con escudo esmeralda) e **Incógnito**.
-- **Persistencia de sesión**: Las pestañas abiertas se guardan en una base de datos local SQLite mediante Room v3 para que no se pierdan al cerrar la app.
+- **Pestañas Múltiples con Miniaturas en Vivo**: Pantalla dedicada en cuadrícula donde cada pestaña muestra una miniatura gráfica real capturada con `GeckoDisplay.capturePixels()` de la parte exacta donde dejaste la página web.
+- **Sistema de Reposo / Hibernación (5 Minutos)**: Monitor no agresivo de inactividad. Si una pestaña permanece 5 minutos sin ser visitada, el sistema suspende la sesión de GeckoView para liberar memoria RAM y consumo de batería en el teléfono. Mantiene intactos el título, la URL y la miniatura con el distintivo `💤 En reposo (5 min)`, y al tocarla se despierta y restaura al instante.
+- **Creación Manual en Incógnito y Protegidas**: Al entrar a los apartados de Incógnito o Protegidas ya no se crean pestañas vacías automáticamente. Se gestionan de forma manual y explícita por decisión del usuario.
+- **Segmentación Tripartita**: Pestañas **Normales**, **Protegidas** (aisladas con escudo esmeralda y contextId) e **Incógnito** (sin registro en historial).
+- **Persistencia de sesión**: Las pestañas abiertas se guardan en la base de datos local SQLite mediante Room v4 para que no se pierdan al cerrar la app.
 - **Cierre selectivo o total con purga**: Cierra pestañas individuales o todas en bloque; las pestañas protegidas purgan de inmediato su contexto de cookies de GeckoView al eliminarse.
 
 ### ⭐ Marcadores y Favoritos
@@ -50,7 +71,7 @@ Navegador web moderno, modular y extensible para dispositivos Android (Android 1
 | **Interfaz de Usuario** | Jetpack Compose + Material Design 3 | UI declarativa, temas adaptativos y componentes dinámicos |
 | **Capa Nativa (C++)** | C++26 / C23 (NDK r28 LTS, CMake 3.31+) | Puente JNI `browser_native`, hashing y aceleración nativa por hardware |
 | **Capa Nativa (Rust)** | Rust Edition 2024 (`core-native`) | Infraestructura base para filtrado de red de alto rendimiento, hashes y seguridad |
-| **Persistencia Local** | Android Room Database (SQLite) + DataStore | Almacenamiento reactivo de pestañas, historial, marcadores y ajustes |
+| **Persistencia Local** | Android Room Database v4 (SQLite) + DataStore | Almacenamiento reactivo de pestañas, historial, marcadores, descargas y cookies de navegación |
 | **Motor Web** | GeckoView Omni (Mozilla) / Android WebView | Motor web potente, extensible y personalizable |
 | **Arquitectura** | MVVM + Clean Architecture + StateFlow | Desacoplamiento de capas y flujo de datos unidireccional (UDF) |
 | **Navegación** | Jetpack Navigation Compose | Enrutamiento desacoplado entre pantallas dedicadas |

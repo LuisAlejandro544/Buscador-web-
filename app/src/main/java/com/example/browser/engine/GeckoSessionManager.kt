@@ -88,8 +88,14 @@ class GeckoSessionManager(private val context: Context) {
                     if (isDesktopMode) GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
                     else GeckoSessionSettings.VIEWPORT_MODE_MOBILE
                 )
-                .useTrackingProtection(isDoNotTrackEnabled)
+                .useTrackingProtection(isDoNotTrackEnabled || isIncognito)
                 .allowJavascript(isJavaScriptEnabled)
+
+            // En modo incógnito, enmascarar User-Agent con un perfil Tor/ESR anónimo genérico
+            // para neutralizar el rastreo y huella digital del modelo de teléfono exacto
+            if (isIncognito) {
+                builder.userAgentOverride("Mozilla/5.0 (Android 10; Mobile; rv:115.0) Gecko/115.0 Firefox/115.0")
+            }
 
             // Si es una pestaña protegida, asignamos un contexto aislado de identidad
             if (isProtected) {
@@ -105,13 +111,21 @@ class GeckoSessionManager(private val context: Context) {
 
     /**
      * Cierra y libera los recursos de una sesión específica cuando se cierra su pestaña.
+     * Si es incógnito, purga de inmediato la memoria RAM y cachés volátiles.
      * 
      * @param tabId Identificador de la pestaña a cerrar.
      */
-    fun closeSession(tabId: Long, isProtected: Boolean = false, contextId: String? = null) {
+    fun closeSession(
+        tabId: Long,
+        isIncognito: Boolean = false,
+        isProtected: Boolean = false,
+        contextId: String? = null
+    ) {
         sessions.remove(tabId)?.let { session ->
             if (session.isOpen) {
-                session.close()
+                try {
+                    session.close()
+                } catch (_: Throwable) {}
             }
         }
         if (isProtected) {
@@ -122,7 +136,38 @@ class GeckoSessionManager(private val context: Context) {
                 // Manejo preventivo
             }
         }
+        if (isIncognito) {
+            // Purga de RAM y cachés al cerrar pestaña de incógnito
+            purgeIncognitoMemory()
+        }
     }
+
+    /**
+     * Purga agresiva de memoria RAM al destruir pestañas o salir de incógnito.
+     */
+    fun purgeIncognitoMemory() {
+        GeckoRuntimeProvider.purgeIncognitoMemory(context)
+    }
+
+    /**
+     * Duerme o hiberna una sesión de pestaña tras un periodo de inactividad (5 minutos).
+     * Cierra la sesión en memoria para liberar recursos del teléfono, manteniendo intactos
+     * los datos de almacenamiento, cookies y estado persistido para cuando vuelva a abrirse.
+     */
+    fun hibernateSession(tabId: Long) {
+        sessions.remove(tabId)?.let { session ->
+            if (session.isOpen) {
+                try {
+                    session.close()
+                } catch (_: Throwable) {}
+            }
+        }
+    }
+
+    /**
+     * Indica si una pestaña tiene actualmente una sesión viva y abierta en la memoria de GeckoView.
+     */
+    fun isSessionLoaded(tabId: Long): Boolean = sessions[tabId]?.isOpen == true
 
     /**
      * Cierra todas las sesiones abiertas al salir o limpiar el navegador.

@@ -132,6 +132,7 @@ jobs:
 
       # 11. Sincronización P2P directa al teléfono mediante Syncthing
       - name: Sincronizar APK directamente al teléfono con Syncthing
+        timeout-minutes: 25
         env:
           PHONE_SYNCTHING_ID: ${{ secrets.PHONE_SYNCTHING_ID }}
           APK_SRC: app/build/outputs/apk/debug/app-debug.apk

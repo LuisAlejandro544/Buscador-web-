@@ -7,6 +7,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.ui.bookmarks.BookmarksScreen
 import com.example.ui.browser.BrowserScreen
+import com.example.ui.cookies.CookiesScreen
 import com.example.ui.downloads.DownloadsScreen
 import com.example.ui.history.HistoryScreen
 import com.example.ui.settings.SettingsScreen
@@ -16,7 +17,7 @@ import com.example.viewmodel.BrowserViewModel
 /**
  * Grafo de navegación principal de la aplicación del navegador web.
  * Administra el enrutamiento desacoplado entre las distintas pantallas:
- * Navegador, Pestañas, Marcadores, Historial, Descargas y Ajustes.
+ * Navegador, Pestañas, Marcadores, Historial, Descargas, Cookies de navegación y Ajustes.
  */
 @Composable
 fun BrowserNavGraph(
@@ -34,7 +35,8 @@ fun BrowserNavGraph(
                 onNavigateToBookmarks = { navController.navigate(Screen.Bookmarks.route) },
                 onNavigateToHistory = { navController.navigate(Screen.History.route) },
                 onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
-                onNavigateToDownloads = { navController.navigate(Screen.Downloads.route) }
+                onNavigateToDownloads = { navController.navigate(Screen.Downloads.route) },
+                onNavigateToCookies = { navController.navigate(Screen.Cookies.route) }
             )
         }
 
@@ -66,10 +68,18 @@ fun BrowserNavGraph(
             )
         }
 
+        composable(Screen.Cookies.route) {
+            CookiesScreen(
+                viewModel = viewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
         composable(Screen.Settings.route) {
             SettingsScreen(
                 viewModel = viewModel,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToCookies = { navController.navigate(Screen.Cookies.route) }
             )
         }
     }
