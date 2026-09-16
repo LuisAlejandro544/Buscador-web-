@@ -21,7 +21,8 @@ data class RecommendedExtension(
     val category: String,
     val description: String,
     val downloadUrl: String,
-    val iconType: String
+    val iconType: String,
+    val iconUrl: String
 ) {
     companion object {
         /**
@@ -38,7 +39,8 @@ data class RecommendedExtension(
                 category = "Bloqueador de Anuncios",
                 description = "Bloquea publicidad intrusiva, banners, ventanas emergentes y rastreadores web. Acelera la carga y ahorra datos móviles.",
                 downloadUrl = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi",
-                iconType = "SHIELD"
+                iconType = "SHIELD",
+                iconUrl = "https://raw.githubusercontent.com/gorhill/uBlock/master/src/img/icon_128.png"
             ),
             RecommendedExtension(
                 id = "addon@darkreader.org",
@@ -46,7 +48,8 @@ data class RecommendedExtension(
                 category = "Modo Oscuro Universal",
                 description = "Convierte automáticamente los fondos blancos brillantes de cualquier sitio web en tonos oscuros para cuidar la vista y ahorrar batería OLED.",
                 downloadUrl = "https://addons.mozilla.org/firefox/downloads/latest/darkreader/latest.xpi",
-                iconType = "DARK_MODE"
+                iconType = "DARK_MODE",
+                iconUrl = "https://raw.githubusercontent.com/darkreader/darkreader/master/src/icons/dr_128.png"
             ),
             RecommendedExtension(
                 id = "{036a55b4-5e72-4d05-a9c1-bba0175b86f0}",
@@ -54,7 +57,8 @@ data class RecommendedExtension(
                 category = "Productividad",
                 description = "Traduce páginas web enteras en tiempo real directamente en la misma pestaña sin salir del navegador.",
                 downloadUrl = "https://addons.mozilla.org/firefox/downloads/latest/traduzir-paginas-web/latest.xpi",
-                iconType = "TRANSLATE"
+                iconType = "TRANSLATE",
+                iconUrl = "https://raw.githubusercontent.com/FilipePS/Traduzir-Paginas-Web/master/res/icon-128.png"
             ),
             RecommendedExtension(
                 id = "{74145fec-f68b-474a-8703-00e058d04d40}",
@@ -62,7 +66,8 @@ data class RecommendedExtension(
                 category = "Privacidad y Anti-Rastreo",
                 description = "Elimina campos de rastreo y espionaje (como utm_source o fbclid) de las URLs para proteger tu historial de navegación.",
                 downloadUrl = "https://addons.mozilla.org/firefox/downloads/latest/clearurls/latest.xpi",
-                iconType = "LINK"
+                iconType = "LINK",
+                iconUrl = "https://gitlab.com/KevinRoebert/ClearUrls/-/raw/master/res/img/icon_128.png"
             )
         )
     }

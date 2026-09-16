@@ -70,9 +70,18 @@ android {
       useLegacyPackaging = true
     }
   }
+  // Configuración dinámica para división de APKs por arquitectura (ABI Splits).
+  // Si se ejecuta en GitHub Actions (CI) o se especifica el parámetro -PsplitApks o SPLIT_APKS=true,
+  // se compilan APKs individuales y livianos por arquitectura (arm64-v8a, armeabi-v7a, x86_64, x86).
+  // En el entorno de desarrollo interactivo de AI Studio se genera el APK unificado (app-debug.apk) para el emulador.
+  val enableSplits = project.hasProperty("splitApks") ||
+      System.getenv("SPLIT_APKS") == "true" ||
+      System.getenv("GITHUB_ACTIONS") == "true" ||
+      System.getenv("CI") == "true"
+
   splits {
     abi {
-      isEnable = true
+      isEnable = enableSplits
       reset()
       include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
       isUniversalApk = false
@@ -138,6 +147,7 @@ dependencies {
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   implementation(libs.geckoview.omni)
+  implementation(libs.jsoup)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

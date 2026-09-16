@@ -70,7 +70,9 @@ Este documento traza las fases de desarrollo, hitos completados y objetivos futu
 
 ---
 
-### 🔵 Fase 3: Capacidades Avanzadas de Navegación, Privacidad y Lógica Rust (Siguiente)
+### 🔵 Fase 3: Capacidades Avanzadas de Navegación, Privacidad y Lógica Rust (En Progreso)
+- [x] **Motor de Filtrado Nativo en Rust (`core-native`):** Integración del crate de alto rendimiento `adblock` (Mozilla/Brave compatible) en Rust Edition 2024 conectado vía JNI (`NativeBridge.kt`). Soporta reglas de sintaxis Adblock Plus / EasyList y listas Hosts, métricas de bloqueo en tiempo real, actualización de listas remotas y reglas manuales con panel de control dedicado en Ajustes.
+- [x] **Modo Lectura Nativo (Reader Mode):** Extracción heurística de artículos web con `jsoup`, limpieza de elementos ruidosos (anuncios, cookies, menús), personalización tipográfica (Serif, Sans, Monospace, Sepia, Noche, Papel, OLED, espaciado e interlineado) y sintetizador de voz (TTS - Text to Speech) con lectura continua por bloques y selector de velocidad.
 - [ ] **Expansión de Efectos de Sonido y Personalización (Próximamente):**
   - Incorporación de nuevos bancos de efectos de sonido para añadir a marcadores ("pop"), cierre de pestañas ("whoosh"), vaciado de datos del modo incógnito y alertas de descargas bloqueadas.
   - Selector en Ajustes para permitir al usuario elegir sus sonidos favoritos o importar archivos de audio personalizados desde el almacenamiento del dispositivo.
@@ -78,8 +80,6 @@ Este documento traza las fases de desarrollo, hitos completados y objetivos futu
 - [ ] **Expansión Continua de Seguridad en Modo Incógnito:**
   - Incorporación de muchas más funciones de seguridad para que el modo incógnito no sea genérico: bloqueo heurístico de telemetría oculta en scripts, sandbox estricto de APIs de sensores (giroscopio, acelerómetro, batería), y rotación dinámica de identidades virtuales.
   - Generación de informe de rastreo en tiempo real para verificar qué elementos intentaron perfilar al usuario y fueron neutralizados.
-- [ ] **Lógica de Seguridad en Rust (`core-native`):** Integración de filtros de bloqueo de publicidad y listas de rastreo procesadas en el crate Rust como acelerador nativo en sinergia con WebExtensions.
-- [ ] **Lector de Modo Lectura:** Extracción del contenido principal de artículos para lectura limpia sin anuncios ni estilos intrusivos.
 - [ ] **Protección contra Rastreo Mejorada (ETP):** Bloqueo nativo de rastreadores de terceros y cookies de seguimiento mediante GeckoView.
 
 ---

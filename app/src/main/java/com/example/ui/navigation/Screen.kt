@@ -15,5 +15,6 @@ sealed class Screen(val route: String) {
     data object Accounts : Screen("accounts")
     data object SitePermissions : Screen("site_permissions")
     data object Extensions : Screen("extensions")
+    data object ReaderMode : Screen("reader_mode")
     data object Onboarding : Screen("onboarding")
 }

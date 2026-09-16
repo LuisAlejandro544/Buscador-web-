@@ -98,13 +98,29 @@ class ExtensionManager(private val context: Context) {
     }
 
     /**
-     * Actualiza y sincroniza la lista de extensiones instaladas en GeckoView.
+     * Resuelve la URL oficial y original del icono para una extensión según su ID canónico.
      */
-    suspend fun refreshInstalledExtensions(): List<WebExtensionModel> = withContext(Dispatchers.IO) {
+    fun resolveExtensionIconUrl(id: String): String? {
+        return when (id) {
+            "uBlock0@raymondhill.net" -> "https://raw.githubusercontent.com/gorhill/uBlock/master/src/img/icon_128.png"
+            "addon@darkreader.org" -> "https://raw.githubusercontent.com/darkreader/darkreader/master/src/icons/dr_128.png"
+            "{036a55b4-5e72-4d05-a9c1-bba0175b86f0}" -> "https://raw.githubusercontent.com/FilipePS/Traduzir-Paginas-Web/master/res/icon-128.png"
+            "{74145fec-f68b-474a-8703-00e058d04d40}" -> "https://gitlab.com/KevinRoebert/ClearUrls/-/raw/master/res/img/icon_128.png"
+            else -> RecommendedExtension.CATALOG.find { it.id == id }?.iconUrl
+        }
+    }
+
+    /**
+     * Actualiza y sincroniza la lista de extensiones instaladas en GeckoView.
+     * Se ejecuta en el hilo principal para GeckoResult y actualiza el StateFlow reactivo.
+     */
+    suspend fun refreshInstalledExtensions(): List<WebExtensionModel> {
         _isLoading.value = true
-        try {
-            val runtime = GeckoRuntimeProvider.get(context)
-            val rawList = runtime.webExtensionController.list().await() ?: emptyList()
+        return try {
+            val rawList = withContext(Dispatchers.Main) {
+                val runtime = GeckoRuntimeProvider.get(context)
+                runtime.webExtensionController.list().await() ?: emptyList()
+            }
 
             val models = rawList.map { ext ->
                 WebExtensionModel(
@@ -115,6 +131,7 @@ class ExtensionManager(private val context: Context) {
                     isEnabled = ext.metaData.enabled,
                     isBuiltIn = ext.isBuiltIn,
                     optionsPageUrl = ext.metaData.optionsPageUrl,
+                    iconUrl = resolveExtensionIconUrl(ext.id),
                     isAllowedInPrivateBrowsing = ext.metaData.allowedInPrivateBrowsing
                 )
             }
@@ -131,59 +148,68 @@ class ExtensionManager(private val context: Context) {
 
     /**
      * Descarga e instala una extensión recomendada desde una URL oficial de Mozilla Add-ons (.xpi).
+     * La descarga por red se ejecuta en Dispatchers.IO y la instalación nativa en GeckoView en Dispatchers.Main.
      * 
      * @param extensionId Identificador canónico para seguimiento de progreso.
      * @param downloadUrl Enlace de descarga directo HTTPS.
      * @return Resultado de la instalación como WebExtensionModel o null en caso de error.
      */
-    suspend fun downloadAndInstall(extensionId: String, downloadUrl: String): Result<WebExtensionModel> = withContext(Dispatchers.IO) {
+    suspend fun downloadAndInstall(extensionId: String, downloadUrl: String): Result<WebExtensionModel> {
         val extensionsDir = File(context.cacheDir, "extensions_cache").apply { mkdirs() }
         val sanitizedFileName = "addon_${System.currentTimeMillis()}_${extensionId.hashCode()}.xpi"
         val targetFile = File(extensionsDir, sanitizedFileName)
 
         _downloadProgress.value = _downloadProgress.value + (extensionId to 0.05f)
 
-        try {
-            val request = Request.Builder().url(downloadUrl).build()
-            val response = httpClient.newCall(request).execute()
+        return try {
+            // Fase 1: Descarga por red en Dispatchers.IO
+            withContext(Dispatchers.IO) {
+                val request = Request.Builder().url(downloadUrl).build()
+                val response = httpClient.newCall(request).execute()
 
-            if (!response.isSuccessful) {
-                throw IllegalStateException("Servidor de Mozilla respondió con error HTTP ${response.code}")
-            }
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Servidor de Mozilla respondió con error HTTP ${response.code}")
+                }
 
-            val body = response.body ?: throw IllegalStateException("Respuesta vacía al descargar extensión")
-            val totalBytes = body.contentLength()
+                val body = response.body ?: throw IllegalStateException("Respuesta vacía al descargar extensión")
+                val totalBytes = body.contentLength()
 
-            body.byteStream().use { input ->
-                FileOutputStream(targetFile).use { output ->
-                    val buffer = ByteArray(8 * 1024)
-                    var bytesRead: Int
-                    var accumulated = 0L
+                body.byteStream().use { input ->
+                    FileOutputStream(targetFile).use { output ->
+                        val buffer = ByteArray(8 * 1024)
+                        var bytesRead: Int
+                        var accumulated = 0L
 
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                        output.write(buffer, 0, bytesRead)
-                        accumulated += bytesRead
-                        if (totalBytes > 0) {
-                            val progress = (accumulated.toFloat() / totalBytes.toFloat()).coerceIn(0.1f, 0.95f)
-                            _downloadProgress.value = _downloadProgress.value + (extensionId to progress)
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            accumulated += bytesRead
+                            if (totalBytes > 0) {
+                                val progress = (accumulated.toFloat() / totalBytes.toFloat()).coerceIn(0.1f, 0.95f)
+                                _downloadProgress.value = _downloadProgress.value + (extensionId to progress)
+                            }
                         }
+                        output.flush()
                     }
-                    output.flush()
                 }
             }
 
             _downloadProgress.value = _downloadProgress.value + (extensionId to 0.98f)
 
-            // Instalar en GeckoView mediante la URI local del archivo .xpi
-            val runtime = GeckoRuntimeProvider.get(context)
-            val fileUri = Uri.fromFile(targetFile).toString()
-            val installedExt = runtime.webExtensionController.install(fileUri).await()
-                ?: throw IllegalStateException("GeckoView no pudo inicializar la extensión instalada")
+            // Fase 2: Instalación en GeckoView ejecutada en el hilo principal (Dispatchers.Main con Looper activo)
+            val installedExt = withContext(Dispatchers.Main) {
+                val runtime = GeckoRuntimeProvider.get(context)
+                val fileUri = Uri.fromFile(targetFile).toString()
+                runtime.webExtensionController.install(fileUri).await()
+                    ?: throw IllegalStateException("GeckoView no pudo inicializar la extensión instalada")
+            }
 
             // Autorizar uso en navegación privada
-            try {
-                runtime.webExtensionController.setAllowedInPrivateBrowsing(installedExt, true).await()
-            } catch (_: Exception) {}
+            withContext(Dispatchers.Main) {
+                try {
+                    val runtime = GeckoRuntimeProvider.get(context)
+                    runtime.webExtensionController.setAllowedInPrivateBrowsing(installedExt, true).await()
+                } catch (_: Exception) {}
+            }
 
             // Refrescar lista local
             refreshInstalledExtensions()
@@ -196,6 +222,7 @@ class ExtensionManager(private val context: Context) {
                 isEnabled = installedExt.metaData.enabled,
                 isBuiltIn = installedExt.isBuiltIn,
                 optionsPageUrl = installedExt.metaData.optionsPageUrl,
+                iconUrl = resolveExtensionIconUrl(installedExt.id),
                 isAllowedInPrivateBrowsing = installedExt.metaData.allowedInPrivateBrowsing
             )
 
@@ -215,17 +242,19 @@ class ExtensionManager(private val context: Context) {
     /**
      * Alterna la activación (encendido/apagado) de una extensión instalada.
      */
-    suspend fun setExtensionEnabled(extensionId: String, enabled: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val runtime = GeckoRuntimeProvider.get(context)
-            val rawList = runtime.webExtensionController.list().await() ?: emptyList()
-            val target = rawList.find { it.id == extensionId }
-                ?: return@withContext Result.failure(IllegalArgumentException("Extensión no encontrada"))
+    suspend fun setExtensionEnabled(extensionId: String, enabled: Boolean): Result<Unit> {
+        return try {
+            withContext(Dispatchers.Main) {
+                val runtime = GeckoRuntimeProvider.get(context)
+                val rawList = runtime.webExtensionController.list().await() ?: emptyList()
+                val target = rawList.find { it.id == extensionId }
+                    ?: throw IllegalArgumentException("Extensión no encontrada")
 
-            if (enabled) {
-                runtime.webExtensionController.enable(target, WebExtensionController.EnableSource.USER).await()
-            } else {
-                runtime.webExtensionController.disable(target, WebExtensionController.EnableSource.USER).await()
+                if (enabled) {
+                    runtime.webExtensionController.enable(target, WebExtensionController.EnableSource.USER).await()
+                } else {
+                    runtime.webExtensionController.disable(target, WebExtensionController.EnableSource.USER).await()
+                }
             }
 
             refreshInstalledExtensions()
@@ -239,14 +268,17 @@ class ExtensionManager(private val context: Context) {
     /**
      * Desinstala completamente una extensión de GeckoView.
      */
-    suspend fun uninstallExtension(extensionId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val runtime = GeckoRuntimeProvider.get(context)
-            val rawList = runtime.webExtensionController.list().await() ?: emptyList()
-            val target = rawList.find { it.id == extensionId }
-                ?: return@withContext Result.failure(IllegalArgumentException("Extensión no encontrada"))
+    suspend fun uninstallExtension(extensionId: String): Result<Unit> {
+        return try {
+            withContext(Dispatchers.Main) {
+                val runtime = GeckoRuntimeProvider.get(context)
+                val rawList = runtime.webExtensionController.list().await() ?: emptyList()
+                val target = rawList.find { it.id == extensionId }
+                    ?: throw IllegalArgumentException("Extensión no encontrada")
 
-            runtime.webExtensionController.uninstall(target).await()
+                runtime.webExtensionController.uninstall(target).await()
+            }
+
             refreshInstalledExtensions()
             Result.success(Unit)
         } catch (e: Exception) {
@@ -257,11 +289,14 @@ class ExtensionManager(private val context: Context) {
 
     /**
      * Función utilitaria de suspensión para convertir GeckoResult a Coroutines Kotlin.
+     * Garantiza ejecución en Dispatchers.Main para disponer de Looper y evitar el fallo "Must have a Handler".
      */
-    private suspend fun <T> GeckoResult<T>.await(): T? = suspendCancellableCoroutine { cont ->
-        this.accept(
-            { value -> if (cont.isActive) cont.resume(value) },
-            { error -> if (cont.isActive) cont.resumeWithException(error ?: Exception("Error en GeckoResult")) }
-        )
+    private suspend fun <T> GeckoResult<T>.await(): T? = withContext(Dispatchers.Main) {
+        suspendCancellableCoroutine { cont ->
+            this@await.accept(
+                { value -> if (cont.isActive) cont.resume(value) },
+                { error -> if (cont.isActive) cont.resumeWithException(error ?: Exception("Error en GeckoResult")) }
+            )
+        }
     }
 }

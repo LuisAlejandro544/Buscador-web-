@@ -17,6 +17,7 @@ import com.example.ui.extension.ExtensionsScreen
 import com.example.ui.history.HistoryScreen
 import com.example.ui.onboarding.OnboardingScreen
 import com.example.ui.permissions.SitePermissionsScreen
+import com.example.ui.reader.ReaderScreen
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.tabs.TabsScreen
 import com.example.viewmodel.BrowserViewModel
@@ -68,7 +69,8 @@ fun BrowserNavGraph(
                 onNavigateToDownloads = { navController.navigate(Screen.Downloads.route) },
                 onNavigateToCookies = { navController.navigate(Screen.Cookies.route) },
                 onNavigateToAccounts = { navController.navigate(Screen.Accounts.route) },
-                onNavigateToExtensions = { navController.navigate(Screen.Extensions.route) }
+                onNavigateToExtensions = { navController.navigate(Screen.Extensions.route) },
+                onNavigateToReaderMode = { navController.navigate(Screen.ReaderMode.route) }
             )
         }
 
@@ -123,6 +125,13 @@ fun BrowserNavGraph(
 
         composable(Screen.Extensions.route) {
             ExtensionsScreen(
+                viewModel = viewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.ReaderMode.route) {
+            ReaderScreen(
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() }
             )

@@ -7,9 +7,12 @@ Este documento describe la organización de módulos, paquetes, flujo de datos y
 ## 🏛️ Principios de Diseño y Arquitectura
 
 1. **Separación de Responsabilidades (SoC):** Cada paquete y clase cumple un rol único y delimitado. La lógica de presentación está separada del acceso a datos y de la implementación concreta del motor web.
-2. **Modularidad y Pantallas Independientes:** Siguiendo las directrices del proyecto, la aplicación evita concentrar todas las funciones en una sola vista monolítica. Cada funcionalidad relevante cuenta con su propia pantalla dedicada (Navegador, Gestor de Pestañas, Marcadores, Historial, Ajustes).
-3. **Flujo de Datos Unidireccional (UDF):** El estado de la interfaz se modela mediante `StateFlow` inmutables emitidos por los ViewModels y consumidos reactivamente por los componentes de Jetpack Compose.
-4. **Desacoplamiento del Motor Web:** A través de la interfaz `BrowserEngineContract`, la capa de interfaz no conoce detalles internos específicos de bajo nivel del motor de renderizado (p. ej. si se renderiza con GeckoView o con un fallback), lo cual permite evolucionar o cambiar de motor sin alterar la lógica de UI ni la gestión de pestañas.
+2. **Modularidad Estricta y Archivos < 500 Líneas:** Para prevenir fallos por complejidad monolítica, el proyecto aplica modularización integral:
+   - **Patrón Delegado en ViewModel:** `BrowserViewModel` orquesta delegados especializados de dominio (`CookieDelegate`, `ExtensionDelegate`, `DownloadDelegate`, `AccountDelegate`, `SitePermissionDelegate`).
+   - **Subcomponentes de UI Atómicos:** Las pantallas principales se descomponen en componentes especializados reutilizables, independientes y probables.
+3. **Pantallas Dedicadas e Interconexión Intuitiva:** Siguiendo las directrices del proyecto, la aplicación evita concentrar todas las funciones en una sola vista monolítica o recurrir a minimalismo extremo. Cada funcionalidad relevante cuenta con su propia pantalla dedicada (Navegador, Gestor de Pestañas, Marcadores, Historial, Descargas, Extensiones, Cookies, Cuentas, Permisos de Sitio y Ajustes) con botones y barras de navegación claras para moverse entre ellas.
+4. **Flujo de Datos Unidireccional (UDF):** El estado de la interfaz se modela mediante `StateFlow` inmutables emitidos por los ViewModels y consumidos reactivamente por los componentes de Jetpack Compose.
+5. **Desacoplamiento del Motor Web:** A través de la interfaz `BrowserEngineContract`, la capa de interfaz no conoce detalles internos específicos de bajo nivel del motor de renderizado (Mozilla GeckoView en C++/Rust con fallbacks nativos).
 
 ---
 
@@ -27,7 +30,9 @@ app/src/main/
 │   │   │   └── WebSignInBridge.kt          # Detección de páginas de autenticación y generación de JS de acceso
 │   │   ├── download/
 │   │   │   ├── DownloadEngine.kt           # Motor autónomo de descargas concurrentes en streaming con pausas y reanudaciones
+│   │   │   ├── DownloadForegroundService.kt # Servicio en primer plano para transferencias en segundo plano
 │   │   │   ├── DownloadNotificationHelper.kt # Gestor de notificaciones nativas de progreso y finalización
+│   │   │   ├── DownloadProgressState.kt    # Modelo de estado reactivo de transferencias
 │   │   │   └── DownloadManagerHelper.kt    # Integración legacy con el servicio del sistema
 │   │   ├── extension/
 │   │   │   ├── ExtensionManager.kt         # Gestor integral de WebExtensions sobre GeckoView (descarga AMO, instalación, ciclo de vida)
@@ -67,12 +72,12 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   │   │   ├── SitePermissionEntity.kt # Modelo relacional para permisos web (origen, tipo, estado y actualización)
 │   │   │   ├── TabEntity.kt         # Modelo relacional para pestañas (incluye flags isIncognito, isProtected y contextId)
 │   │   │   └── UserAccountEntity.kt # Modelo relacional para cuentas vinculadas (email, nombre, activo)
-│   │   └── BrowserDatabase.kt       # Base de datos Room con control de versiones (v8) y migraciones
+│   │   └── BrowserDatabase.kt       # Base de datos Room con control de versiones y migraciones
 │   ├── model/
 │   │   ├── BrowserTab.kt            # Modelo de dominio para pestañas
 │   │   └── SearchEngine.kt          # Proveedores de búsqueda (DuckDuckGo, Google, Bing, etc.)
 │   ├── preferences/
-│   │   └── BrowserPreferences.kt    # Persistencia de preferencias del usuario mediante DataStore (incluye bloqueo de prompts)
+│   │   └── BrowserPreferences.kt    # Persistencia de preferencias del usuario mediante DataStore
 │   └── repository/
 │       └── BrowserRepository.kt     # Repositorio unificado que conecta DAOs, DataStore y ViewModel
 ├── ui/
@@ -81,16 +86,30 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   ├── bookmarks/
 │   │   └── BookmarksScreen.kt       # Pantalla completa de marcadores con búsqueda y CRUD
 │   ├── browser/
-│   │   └── BrowserScreen.kt         # Pantalla principal con contenedor GeckoView, omnibox y menú
+│   │   ├── BrowserScreen.kt         # Orquestador principal de navegación (GeckoView + Diálogos + StartPage)
+│   │   ├── OmniboxField.kt          # Barra de direcciones inteligente (cifrado HTTPS, atajos, búsqueda)
+│   │   ├── BrowserActionMenu.kt     # Menú desplegable contextual (pestañas, modo escritorio, descargas, etc.)
+│   │   ├── BrowserBottomBar.kt      # Barra de herramientas inferior con historial, inicio y gestor de pestañas
+│   │   └── BrowserStartPage.kt      # Página de inicio rápida con marcadores, historial y accesos directos
 │   ├── components/
 │   │   ├── WebPromptDialog.kt       # Diálogos nativos Material 3 para alerts, confirms, prompts, permisos y ficheros
 │   │   └── WebSignInPromptBanner.kt # Banner flotante interactivo de acceso web con un solo toque
 │   ├── cookies/
-│   │   └── CookiesScreen.kt         # Pantalla de auditoría de cookies, detección de rastreadores y borrado
+│   │   ├── CookiesScreen.kt         # Orquestador de auditoría de cookies y rastreadores
+│   │   ├── CookieMetricsHeader.kt   # Indicadores visuales de métricas (total, rastreadores, protegidas)
+│   │   ├── CookieDetailCard.kt      # Ficha detallada individual de cookie con metadatos técnicos y borrado
+│   │   └── DomainCookieGroupCard.kt # Tarjeta colapsable agrupada por dominio con purga en lote
 │   ├── downloads/
-│   │   └── DownloadsScreen.kt       # Pantalla avanzada de descargas con búsqueda, apertura y vaciado
+│   │   ├── DownloadsScreen.kt       # Pantalla de descargas (activas en tiempo real e historial archivado)
+│   │   ├── ActiveDownloadCard.kt    # Tarjeta de descarga activa con velocidad, progreso y controles
+│   │   ├── DownloadItemCard.kt      # Tarjeta del historial de archivos completados
+│   │   └── DownloadFileIconHelper.kt # Categorización visual por extensión y formato de tamaño/velocidad
 │   ├── extension/
-│   │   └── ExtensionsScreen.kt      # Pantalla dedicada de gestión y exploración de WebExtensions
+│   │   ├── ExtensionsScreen.kt      # Orquestador de gestión de complementos WebExtensions
+│   │   ├── ExtensionLogo.kt         # Renderizado de isotipos oficiales con fallback temático dinámico
+│   │   ├── InstalledExtensionsTab.kt # Pestaña de extensiones instaladas con switches y desinstalación
+│   │   ├── RecommendedCatalogTab.kt # Catálogo oficial AMO (uBlock, Dark Reader, TWP, ClearURLs)
+│   │   └── CustomUrlInstallerTab.kt # Instalador universal de paquetes .xpi por URL directa
 │   ├── history/
 │   │   └── HistoryScreen.kt         # Pantalla completa de historial con búsqueda y eliminación
 │   ├── navigation/
@@ -101,7 +120,12 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   ├── permissions/
 │   │   └── SitePermissionsScreen.kt # Pantalla dedicada para gestión de permisos por sitio y políticas "No Preguntar"
 │   ├── settings/
-│   │   └── SettingsScreen.kt        # Pantalla completa de ajustes y configuración del navegador
+│   │   ├── SettingsScreen.kt        # Orquestador de ajustes y configuración del navegador
+│   │   ├── SettingsGeneralSection.kt # Motor de búsqueda, página de inicio y modo escritorio
+│   │   ├── SettingsShortcutsSection.kt # Accesos directos a Cookies, Cuentas, Permisos y Extensiones
+│   │   ├── SettingsPrivacySection.kt # Políticas JavaScript, cookies, Do Not Track y bloqueo silencioso
+│   │   ├── SettingsSoundSection.kt  # Efectos sonoros y prueba interactiva
+│   │   └── SettingsArchitectureSection.kt # Diagnóstico nativo del motor GeckoView y ABIs (32/64 bits)
 │   ├── tabs/
 │   │   ├── TabCardItem.kt           # Tarjeta individual con renderizado de miniatura, distintivo de reposo y cierre
 │   │   └── TabsScreen.kt            # Pantalla en cuadrícula para gestionar pestañas normales, protegidas e incógnito
@@ -110,7 +134,13 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │       ├── Theme.kt                 # Configuración de MaterialTheme con soporte de modo oscuro/claro
 │       └── Type.kt                  # Configuración tipográfica
 ├── viewmodel/
-│   └── BrowserViewModel.kt          # Gestor de estado centralizado que coordina motor Gecko, Room y UI
+│   ├── BrowserViewModel.kt          # Orquestador del ViewModel (coordinación reactiva < 420 líneas)
+│   └── delegates/
+│       ├── CookieDelegate.kt        # Delegado de auditoría, categorización y purga de cookies
+│       ├── ExtensionDelegate.kt     # Delegado de descarga, instalación y ciclo de vida de WebExtensions
+│       ├── DownloadDelegate.kt      # Delegado del motor de descargas en streaming y persistencia
+│       ├── AccountDelegate.kt       # Delegado de gestión de credenciales y perfiles de usuario
+│       └── SitePermissionDelegate.kt # Delegado de permisos por dominio web y políticas de bloqueo
 ├── MainActivity.kt                  # Activity principal con configuración Edge-to-Edge y contenedor Compose
 ├── .github/
 │   └── workflows/
@@ -120,37 +150,47 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 
 ---
 
-## 🔄 Flujo de Interacción y Estados
+## 🔄 Flujo de Interacción y Delegados
 
 ```text
 [Usuario / Interfaz Compose]
           │
-          ▼ Dispara eventos (Intent: Abrir pestaña protegida, Navegar URL, Añadir marcador)
-[BrowserViewModel]
+          ▼ Dispara eventos (Navegar URL, Instalar Extensión, Descargar archivo, Gestionar Cookies)
+[BrowserViewModel] (Orquestador Central)
           │
-     ┌────┴──────────────────────────┐
-     ▼                               ▼
-[BrowserDatabase (Room v3)]  [BrowserEngineContract]
- (Pestañas, Historial,        (Carga URL, Back/Forward,
-  Marcadores en SQLite)        Desktop Mode, Progreso)
-     │                               │
-     └─────────────┬─────────────────┘
-                   ▼
-       Emisión de StateFlow (BrowserUiState)
-                   │
-                   ▼ Recomposición reactiva
-       [Pantallas de Jetpack Compose]
+     ┌────┼──────────────────────────┬──────────────────────────┐
+     ▼    ▼                          ▼                          ▼
+[CookieDelegate]             [ExtensionDelegate]        [DownloadDelegate]
+(Purga, Rastreadores,         (Instalación AMO,          (Streaming, Pausa,
+ Sincronización Gecko)        Gestión en vivo)           Reanudación, Notif)
+     │    │                          │                          │
+     ▼    ▼                          ▼                          ▼
+[AccountDelegate]            [SitePermissionDelegate]   [BrowserEngineContract]
+(Credenciales, One-Tap)      (Permisos por Dominio)     (GeckoView C++/Rust)
+          │
+          └──────────────────────────┬──────────────────────────┘
+                                     ▼
+                        Emisión de StateFlow reactivos
+                                     │
+                                     ▼ Recomposición limpia
+                        [Pantallas de Jetpack Compose]
 ```
 
 ---
 
 ## 🛡️ Modularidad y Extensibilidad
 
-- **Inyección y Ciclo de Vida:** La base de datos `BrowserDatabase` se inicializa como Singleton mediante lazy evaluation para evitar sobrecargas de memoria o accesos concurrentes destructivos.
-- **Seguridad en Modo Incógnito:** Las pestañas marcadas como `isIncognito = true` no se persisten en la tabla `tabs` de Room y su navegación no genera registros en `history`.
+- **Arquitectura de Delegados en ViewModel:**
+  - Originalmente, `BrowserViewModel` concentraba más de 1,380 líneas asumiendo responsabilidades dispares.
+  - Se desacopló en 5 delegados específicos (`CookieDelegate`, `ExtensionDelegate`, `DownloadDelegate`, `AccountDelegate`, `SitePermissionDelegate`) reduciendo el ViewModel principal a ~400 líneas, facilitando el mantenimiento, pruebas unitarias locales con Robolectric y previniendo colapsos de memoria.
+- **Modularización de Pantallas de UI:**
+  - `BrowserScreen.kt`: Reducido de 679 a ~280 líneas delegando en `OmniboxField`, `BrowserActionMenu` y `BrowserBottomBar`.
+  - `CookiesScreen.kt`: Reducido de 894 a ~270 líneas delegando en `CookieMetricsHeader`, `CookieDetailCard` y `DomainCookieGroupCard`.
+  - `ExtensionsScreen.kt`: Reducido de 687 a ~180 líneas delegando en `ExtensionLogo`, `InstalledExtensionsTab`, `RecommendedCatalogTab` y `CustomUrlInstallerTab`.
+  - `DownloadsScreen.kt`: Reducido de 663 a ~200 líneas delegando en `ActiveDownloadCard`, `DownloadItemCard` y `DownloadFileIconHelper`.
+  - `SettingsScreen.kt`: Reducido de 632 a ~180 líneas delegando en `SettingsGeneralSection`, `SettingsShortcutsSection`, `SettingsPrivacySection`, `SettingsSoundSection` y `SettingsArchitectureSection`.
 - **Aislamiento por Pestañas Protegidas (Context Containers):** Cada pestaña protegida opera con su propio `contextId` inyectado en `GeckoSessionSettings.Builder`. Esto crea una partición estricta de cookies, caché web y `localStorage`. Al eliminarse la pestaña, `GeckoSessionManager` destruye la sesión y limpia el contexto en el motor invocando `runtime.storageController.clearDataForSessionContext(contextId)`.
 - **Soporte GeckoView:** La infraestructura de Gradle importa `geckoview-omni` e incluye soporte nativo legacy para empaquetado de librerías ELF `.so` (`libxul.so`, etc.), permitiendo instanciar `GeckoRuntime` y `GeckoSession` implementando el contrato `BrowserEngineContract`.
-- **Auditoría de Cookies y Eliminación Sincronizada:** El módulo `ui/cookies/CookiesScreen.kt` audita cookies locales indexadas en Room v4 e interactúa con `GeckoRuntime.storageController` para purgas por host o globales. Incorpora heurísticas para etiquetar cookies rastreadoras de terceros (`isTracker = true`) y advertir al usuario en la interfaz.
 - **Inmunidad de Tipografía Móvil (`fontScale = 1.0f`):** En `Theme.kt`, se inyecta una instancia personalizada de `Density` mediante `CompositionLocalProvider(LocalDensity provides ...)`. Esto desvincula la interfaz del multiplicador de fuente global del sistema operativo del dispositivo, asegurando proporciones estables en cualquier pantalla de teléfono sin importar el tamaño de letra configurado en Android.
 - **Miniaturas Gráficas y Suspensión Inteligente (5 min):** `TabThumbnailManager` almacena capturas escaladas de las páginas visitadas mediante `GeckoDisplay.capturePixels()`. Paralelamente, `BrowserViewModel` evalúa el tiempo de inactividad de las pestañas cada 15 segundos; si una pestaña supera los 5 minutos sin foco, invoca `GeckoSessionManager.hibernateSession()` cerrando el proceso de GeckoView y liberando memoria RAM del teléfono. La miniatura y el estado visual permanecen intactos en la cuadrícula indicando "En reposo (5 min)"; al tocar la pestaña, la sesión se reactiva automáticamente.
 - **Blindaje Avanzado del Modo Incógnito (No Genérico):**
@@ -160,7 +200,6 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
   - **Total Cookie Protection (dFPI):** Confinamiento de cookies y almacenamiento al dominio de primer nivel (`ACCEPT_FIRST_PARTY_AND_ISOLATE_OTHERS`, `privacy.partition.network_state = true`), previniendo el rastreo cruzado entre sitios.
   - **Purga Inmediata de RAM:** Al cerrar cualquier pestaña de incógnito o salir del modo, `GeckoSessionManager` y `GeckoRuntimeProvider` ejecutan `storageController.clearData(ALL_CACHES or AUTH_SESSIONS)`, destruyen miniaturas y disparan `System.gc()`.
   - **Protección Visual FLAG_SECURE:** Bloqueo de capturas de pantalla y ocultación visual en la multitarea de Android al navegar en incógnito.
-  - **Arquitectura Abierta para Expansión Continua:** El motor de incógnito está concebido para incorporar progresivamente más capas de defensa activa (bloqueo heurístico de telemetría oculta en scripts, virtualización de red y sandboxing riguroso).
 - **Capa Nativa Híbrida (C++26 / Rust 2024):** Preparada mediante NDK r28 y CMake 3.31+ para vincular librerías `.so` de alto rendimiento. Rust asume la lógica pesada de seguridad (bloqueo de anuncios, hashes criptográficos, protección de rastreo) y C++ proporciona aceleración por hardware y enlace con APIs nativas del sistema. Los artefactos temporales de compilación de CMake y Cargo quedan completamente aislados por `.gitignore`.
 - **Ecosistema de Extensiones Web (WebExtensions) Bajo Demanda y Prevención de Licencias Víricas:**
   - **Descarga Oficial Directa desde Mozilla Add-ons (AMO):** En estricto cumplimiento de la política de código cerrado y protección legal de propiedad intelectual, el proyecto **NO** empaqueta binarios `.xpi` de extensiones bajo licencias copyleft o víricas (como GPLv3 en uBlock Origin) dentro del APK o carpeta `assets`. En su lugar, el navegador actúa como un agente de usuario neutral que se conecta directamente a los servidores oficiales de Mozilla (`https://addons.mozilla.org/firefox/downloads/latest/...`) bajo petición explícita y consentimiento del usuario.
@@ -168,17 +207,6 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
     - Se apoya en `GeckoRuntime.webExtensionController` para la descarga, verificación de permisos e instalación dinámica en tiempo de ejecución.
     - Soporta la activación (`enable()`), desactivación (`disable()`) y desinstalación (`uninstall()`) en caliente sin requerir reinicio del proceso de GeckoView.
     - Emite flujos reactivos `StateFlow` con el progreso porcentual de descarga por extensión y la lista actualizada de complementos para consumo en Jetpack Compose.
-  - **Flujo de Configuración Inicial (Onboarding) y Pantalla Dedicada:**
-    - `OnboardingScreen`: En el primer arranque, el usuario selecciona qué motor de búsqueda desea fijar y qué extensiones del catálogo desea instalar automáticamente antes de navegar.
-    - `ExtensionsScreen`: Pantalla dedicada para auditar complementos activos, alternar su estado, eliminarlos o instalar cualquier extensión externa mediante URL directa.
-  - **Sinergia Futura con el Motor Nativo Rust (`core-native`):**
-    En smartphones, ejecutar cientos de miles de reglas exclusivamente en el motor JavaScript de una extensión satura el hilo de eventos y consume batería. La arquitectura propone una división de responsabilidades simbiótica:
-    1. *uBlock Origin (Capa Web / Interfaz / Inyección DOM):* Proporciona la interfaz de usuario familiar, defusers de scriptlets para evadir anti-adblockers y filtrado cosmético de nodos en el DOM.
-    2. *Rust `core-native` (Capa de Rendimiento Extremo / JNI):*
-       - **Evaluación de Filtros en Memoria Nativa:** Indexación de listas masivas (EasyList, Peter Lowe, etc.) en estructuras ultra compactas (Tries, filtros de Bloom y autómatas Aho-Corasick) ejecutadas a velocidad nativa sin sobrecargar el recolector de basura de Java ni la máquina virtual JS.
-       - **Desinfección Instantánea de URLs (Query Parameter Stripping):** Limpieza inmediata de tokens de seguimiento y telemetría (`fbclid`, `gclid`, `utm_*`, `yclid`, `mc_eid`) en Rust antes de despachar la petición de red.
-       - **Filtrado Previo a Nivel de Red y DNS:** Bloqueo de peticiones maliciosas antes de la negociación TLS en GeckoView, reduciendo drásticamente el consumo de datos móviles y energía del procesador.
-       - **Auditoría y Métricas Zero-Copy:** Contadores de elementos bloqueados y telemetría de amenazas expuestos a Compose con latencia mínima.
 - **Canal de Despliegue y Artefactos por Arquitectura (GitHub Actions CI):** El flujo en `.github/workflows/build-debug.yml` implementa compilación continua sin intermediarios: compila los APKs de depuración de forma limpia (sin cachés), genera una firma `debug.keystore` fresca, genera binarios divididos por arquitectura (`splits.abi`) y los publica como artefactos independientes en GitHub (`app-debug-arm64-v8a`, `app-debug-armeabi-v7a`, `app-debug-x86_64`, `app-debug-x86`) para permitir descargas optimizadas directamente al móvil sin pesos universales redundantes.
 - **Gestión de Cuentas e Identidad Web Integrada (`AccountCredentialManager` y `WebSignInBridge`):**
   - **Vinculación Nativa con `androidx.credentials`:** Utiliza `CredentialManager` y `GetGoogleIdOption` para enlazar cuentas de Google o credenciales personalizadas en el dispositivo móvil sin depender de servicios propietarios inflexibles.
@@ -186,5 +214,3 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
   - **Detección Dinámica de Autenticación (`WebSignInBridge`):** Analiza en tiempo real las URLs cargadas en el motor web para identificar portales de acceso, protocolos OAuth2, OpenID Connect y botones de inicio de sesión de Google.
   - **Banner Interactivo One-Tap en Jetpack Compose (`WebSignInPromptBanner`):** Despliega un componente animado en la parte superior del navegador con la identidad activa del usuario cuando se visita un sitio web compatible.
   - **Inyección y Autocompletado en GeckoView:** Al presionar "Continuar", el navegador evalúa JavaScript en el contexto de la página para rellenar campos de correo/usuario o activar selectores de inicio de sesión de Google automáticamente.
-  - **Pantalla Dedicada (`AccountsScreen`):** Vista completa accesible desde el menú principal del navegador y desde Ajustes para vincular cuentas, alternar perfiles y gestionar credenciales guardadas.
-

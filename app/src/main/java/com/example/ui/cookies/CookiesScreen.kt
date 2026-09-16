@@ -1,11 +1,5 @@
 package com.example.ui.cookies
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,34 +9,25 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ClearAll
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Cookie
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -51,162 +36,110 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.entity.CookieEntity
 import com.example.viewmodel.BrowserViewModel
 
 /**
- * Filtro de visualización de cookies de navegación.
+ * Filtros de visualización para la auditoría de cookies.
  */
 enum class CookieFilterTab {
-    ALL, PROTECTED, TRACKERS, BY_SITE
+    ALL, TRACKERS, PROTECTED, BY_DOMAIN
 }
 
 /**
- * Pantalla dedicada de gestión y auditoría de Cookies de Navegación.
+ * Pantalla del Administrador de Cookies de Navegación.
  * 
- * Permite a los usuarios inspeccionar todas las cookies depositadas por los sitios web,
- * categorizarlas entre cookies funcionales y rastreadores de publicidad/analítica,
- * diferenciar claramente las cookies originadas en pestañas protegidas frente a las estándar,
- * y destruirlas automáticamente al cerrar la pestaña o manualmente.
+ * Permite auditar, filtrar y eliminar cookies con precisión:
+ * - Filtros por tipo: Todas, Rastreadores/Publicidad, Aisladas en burbujas y Agrupadas por sitio.
+ * - Búsqueda en tiempo real por nombre de cookie o dominio web.
+ * - Purga selectiva (solo rastreadores, cookies de pestañas protegidas o borrado total).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CookiesScreen(
     viewModel: BrowserViewModel,
-    onNavigateBack: () -> Unit,
-    modifier: Modifier = Modifier
+    onNavigateBack: () -> Unit
 ) {
-    val allCookies by viewModel.allCookies.collectAsStateWithLifecycle()
-    val trackerCookies by viewModel.trackerCookies.collectAsStateWithLifecycle()
-    val protectedCookies by viewModel.protectedCookies.collectAsStateWithLifecycle()
-    val totalCount by viewModel.cookieCount.collectAsStateWithLifecycle()
-    val trackerCount by viewModel.trackerCookieCount.collectAsStateWithLifecycle()
-    val protectedCount by viewModel.protectedCookieCount.collectAsStateWithLifecycle()
-    val domains by viewModel.cookieDomains.collectAsStateWithLifecycle()
+    val allCookies by viewModel.allCookies.collectAsState()
+    val totalCount by viewModel.cookieCount.collectAsState()
+    val trackerCount by viewModel.trackerCookieCount.collectAsState()
+    val protectedCount by viewModel.protectedCookieCount.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
-    var selectedTab by remember { mutableStateOf(CookieFilterTab.ALL) }
-    var showDeleteAllDialog by remember { mutableStateOf(false) }
-    var showDeleteTrackersDialog by remember { mutableStateOf(false) }
-    var showDeleteProtectedDialog by remember { mutableStateOf(false) }
-    var domainToDelete by remember { mutableStateOf<String?>(null) }
+    var selectedFilter by remember { mutableStateOf(CookieFilterTab.ALL) }
+    var showClearAllConfirmation by remember { mutableStateOf(false) }
+    var showClearTrackersConfirmation by remember { mutableStateOf(false) }
 
-    // Filtrar la lista según la búsqueda y la pestaña seleccionada
-    val filteredCookies = remember(allCookies, trackerCookies, protectedCookies, searchQuery, selectedTab) {
-        val baseList = when (selectedTab) {
-            CookieFilterTab.ALL -> allCookies
-            CookieFilterTab.PROTECTED -> protectedCookies
-            CookieFilterTab.TRACKERS -> trackerCookies
-            CookieFilterTab.BY_SITE -> allCookies
-        }
-        if (searchQuery.isBlank()) {
-            baseList
-        } else {
-            baseList.filter {
+    val emeraldColor = Color(0xFF00897B)
+
+    // Filtrar cookies según la búsqueda y el filtro seleccionado
+    val filteredCookies = remember(allCookies, searchQuery, selectedFilter) {
+        var list = allCookies
+        if (searchQuery.isNotBlank()) {
+            list = list.filter {
                 it.domain.contains(searchQuery, ignoreCase = true) ||
-                        it.name.contains(searchQuery, ignoreCase = true)
+                it.name.contains(searchQuery, ignoreCase = true)
             }
+        }
+        when (selectedFilter) {
+            CookieFilterTab.ALL -> list
+            CookieFilterTab.TRACKERS -> list.filter { it.isTracker }
+            CookieFilterTab.PROTECTED -> list.filter { it.isProtected }
+            CookieFilterTab.BY_DOMAIN -> list
         }
     }
 
+    // Agrupación de cookies por dominio para la vista por sitio
+    val domainGroups = remember(filteredCookies) {
+        filteredCookies.groupBy { it.domain }
+    }
+
     Scaffold(
-        modifier = modifier
-            .fillMaxSize()
-            .imePadding()
-            .testTag("cookies_screen"),
         topBar = {
             TopAppBar(
-                title = {
-                    Column(verticalArrangement = Arrangement.Center) {
-                        Text(
-                            text = "Cookies de navegación",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "$totalCount almacenadas • $trackerCount rastreadores",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                },
+                title = { Text("Cookies de navegación", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(
-                        onClick = onNavigateBack,
-                        modifier = Modifier.testTag("cookies_back_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Volver al navegador"
-                        )
+                    IconButton(onClick = onNavigateBack, modifier = Modifier.testTag("cookies_back_button")) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 },
                 actions = {
-                    if (protectedCount > 0) {
-                        IconButton(
-                            onClick = { showDeleteProtectedDialog = true },
-                            modifier = Modifier.testTag("btn_delete_protected_cookies")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Security,
-                                contentDescription = "Eliminar cookies protegidas",
-                                tint = Color(0xFF00C853)
-                            )
-                        }
-                    }
                     if (trackerCount > 0) {
                         IconButton(
-                            onClick = { showDeleteTrackersDialog = true },
-                            modifier = Modifier.testTag("btn_delete_trackers")
+                            onClick = { showClearTrackersConfirmation = true },
+                            modifier = Modifier.testTag("clear_trackers_top_button")
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Shield,
+                                imageVector = Icons.Default.Radar,
                                 contentDescription = "Eliminar rastreadores",
                                 tint = MaterialTheme.colorScheme.error
                             )
                         }
                     }
-                    if (totalCount > 0) {
+                    if (allCookies.isNotEmpty()) {
                         IconButton(
-                            onClick = { showDeleteAllDialog = true },
-                            modifier = Modifier.testTag("btn_clear_all_cookies")
+                            onClick = { showClearAllConfirmation = true },
+                            modifier = Modifier.testTag("clear_all_cookies_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.DeleteSweep,
-                                contentDescription = "Borrar todas las cookies",
-                                tint = MaterialTheme.colorScheme.error
-                            )
+                            Icon(Icons.Default.ClearAll, contentDescription = "Borrar todas las cookies")
                         }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                }
             )
         }
     ) { innerPadding ->
@@ -214,36 +147,30 @@ fun CookiesScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .padding(horizontal = 16.dp)
         ) {
-            // Tarjeta superior con métricas de privacidad
+            // Cabecera de métricas visuales
             CookieMetricsHeader(
-                totalCookies = totalCount,
-                protectedCount = protectedCount,
+                totalCount = totalCount,
                 trackerCount = trackerCount,
-                siteCount = domains.size,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                protectedCount = protectedCount
             )
 
-            // Barra de búsqueda rápida
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Campo de búsqueda en tiempo real
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .testTag("cookies_search_input"),
-                placeholder = { Text("Buscar por sitio o cookie...") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
+                    .testTag("cookie_search_input"),
+                placeholder = { Text("Buscar cookie o dominio (ej: google, _ga)...") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Limpiar búsqueda")
+                            Icon(Icons.Default.Close, contentDescription = "Limpiar búsqueda")
                         }
                     }
                 },
@@ -251,642 +178,163 @@ fun CookiesScreen(
                 shape = RoundedCornerShape(12.dp)
             )
 
-            // Chips de filtrado de pestañas con desplazamiento horizontal para evitar deformación en móvil
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Chips de filtrado
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 FilterChip(
-                    selected = selectedTab == CookieFilterTab.ALL,
-                    onClick = { selectedTab = CookieFilterTab.ALL },
-                    label = { Text("Todas ($totalCount)", maxLines = 1) },
-                    leadingIcon = { Icon(Icons.Default.Cookie, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                    modifier = Modifier.testTag("tab_all_cookies")
+                    selected = selectedFilter == CookieFilterTab.ALL,
+                    onClick = { selectedFilter = CookieFilterTab.ALL },
+                    label = { Text("Todas") },
+                    modifier = Modifier.testTag("chip_all_cookies")
                 )
                 FilterChip(
-                    selected = selectedTab == CookieFilterTab.PROTECTED,
-                    onClick = { selectedTab = CookieFilterTab.PROTECTED },
-                    label = { Text("Protegidas ($protectedCount)", maxLines = 1) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Security,
-                            contentDescription = null,
-                            tint = if (protectedCount > 0) Color(0xFF00C853) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = Color(0xFF00C853).copy(alpha = 0.18f),
-                        selectedLabelColor = Color(0xFF007E33)
-                    ),
-                    modifier = Modifier.testTag("tab_protected_cookies")
-                )
-                FilterChip(
-                    selected = selectedTab == CookieFilterTab.TRACKERS,
-                    onClick = { selectedTab = CookieFilterTab.TRACKERS },
-                    label = { Text("Rastreadores ($trackerCount)", maxLines = 1) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Shield,
-                            contentDescription = null,
-                            tint = if (trackerCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    },
+                    selected = selectedFilter == CookieFilterTab.TRACKERS,
+                    onClick = { selectedFilter = CookieFilterTab.TRACKERS },
+                    label = { Text("Rastreadores") },
+                    leadingIcon = { Icon(Icons.Default.Radar, contentDescription = null, modifier = Modifier.size(14.dp)) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
                         selectedLabelColor = MaterialTheme.colorScheme.onErrorContainer
                     ),
-                    modifier = Modifier.testTag("tab_tracker_cookies")
+                    modifier = Modifier.testTag("chip_tracker_cookies")
                 )
                 FilterChip(
-                    selected = selectedTab == CookieFilterTab.BY_SITE,
-                    onClick = { selectedTab = CookieFilterTab.BY_SITE },
-                    label = { Text("Por Sitio", maxLines = 1) },
-                    leadingIcon = { Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                    modifier = Modifier.testTag("tab_by_site_cookies")
+                    selected = selectedFilter == CookieFilterTab.PROTECTED,
+                    onClick = { selectedFilter = CookieFilterTab.PROTECTED },
+                    label = { Text("Aisladas") },
+                    leadingIcon = { Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = emeraldColor.copy(alpha = 0.2f),
+                        selectedLabelColor = emeraldColor
+                    ),
+                    modifier = Modifier.testTag("chip_protected_cookies")
+                )
+                FilterChip(
+                    selected = selectedFilter == CookieFilterTab.BY_DOMAIN,
+                    onClick = { selectedFilter = CookieFilterTab.BY_DOMAIN },
+                    label = { Text("Por Sitio") },
+                    leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                    modifier = Modifier.testTag("chip_domain_cookies")
                 )
             }
 
-            // Banner explicativo cuando se visualizan cookies de pestaña protegida
-            AnimatedVisibility(
-                visible = selectedTab == CookieFilterTab.PROTECTED,
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFFE8F5E9)
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Security,
-                            contentDescription = null,
-                            tint = Color(0xFF1B5E20),
-                            modifier = Modifier.size(26.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Aislamiento de Pestañas Protegidas",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1B5E20)
-                            )
-                            Text(
-                                text = "Cookies efímeras en contenedor aislado. Se destruyen automáticamente en cuanto cierras la pestaña correspondiente.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF2E7D32)
-                            )
-                        }
-                    }
-                }
-            }
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Lista de contenido según pestaña activa
+            // Lista de contenido: Por Dominio o Individual
             if (filteredCookies.isEmpty()) {
-                EmptyCookiesState(searchQuery = searchQuery)
-            } else {
-                if (selectedTab == CookieFilterTab.BY_SITE) {
-                    // Vista agrupada por dominios
-                    val grouped = remember(filteredCookies) {
-                        filteredCookies.groupBy { it.domain }
-                    }
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(grouped.keys.toList(), key = { it }) { domain ->
-                            val domainCookies = grouped[domain] ?: emptyList()
-                            DomainCookieGroupCard(
-                                domain = domain,
-                                cookies = domainCookies,
-                                onDeleteDomain = { domainToDelete = domain },
-                                onDeleteSingleCookie = { id -> viewModel.deleteCookie(id, domain) }
-                            )
-                        }
-                    }
-                } else {
-                    // Vista plana detallada
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(filteredCookies, key = { it.id }) { cookie ->
-                            CookieDetailCard(
-                                cookie = cookie,
-                                onDelete = { viewModel.deleteCookie(cookie.id, cookie.domain) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Diálogos de confirmación
-    if (showDeleteAllDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteAllDialog = false },
-            title = { Text("¿Borrar todas las cookies?") },
-            text = { Text("Se eliminarán todas las sesiones activas, preferencias guardadas y rastreadores de todos los sitios web visitados.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.clearAllCookies()
-                        showDeleteAllDialog = false
-                    },
-                    modifier = Modifier.testTag("confirm_clear_all_cookies")
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("Borrar Todo", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteAllDialog = false }) {
-                    Text("Cancelar")
-                }
-            }
-        )
-    }
-
-    if (showDeleteProtectedDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteProtectedDialog = false },
-            title = { Text("¿Eliminar cookies de pestañas protegidas?") },
-            text = { Text("Se eliminarán las $protectedCount cookies registradas en modo pestaña protegida. Recuerda que también se destruyen automáticamente cada vez que cierras la pestaña.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deleteProtectedCookies()
-                        showDeleteProtectedDialog = false
-                    },
-                    modifier = Modifier.testTag("confirm_delete_protected_cookies")
-                ) {
-                    Text("Eliminar Protegidas", color = Color(0xFF007E33), fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteProtectedDialog = false }) {
-                    Text("Cancelar")
-                }
-            }
-        )
-    }
-
-    if (showDeleteTrackersDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteTrackersDialog = false },
-            title = { Text("¿Eliminar rastreadores?") },
-            text = { Text("Se eliminarán las $trackerCount cookies identificadas como rastreadores publicitarios y analíticos de terceros.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deleteTrackerCookies()
-                        showDeleteTrackersDialog = false
-                    },
-                    modifier = Modifier.testTag("confirm_delete_trackers")
-                ) {
-                    Text("Eliminar Rastreadores", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteTrackersDialog = false }) {
-                    Text("Cancelar")
-                }
-            }
-        )
-    }
-
-    domainToDelete?.let { domain ->
-        AlertDialog(
-            onDismissRequest = { domainToDelete = null },
-            title = { Text("¿Eliminar cookies de $domain?") },
-            text = { Text("Se cerrará la sesión en este sitio y se eliminarán todas las cookies asociadas.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deleteCookiesByDomain(domain)
-                        domainToDelete = null
-                    }
-                ) {
-                    Text("Eliminar", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { domainToDelete = null }) {
-                    Text("Cancelar")
-                }
-            }
-        )
-    }
-}
-
-/**
- * Encabezado con 3 tarjetas métricas de estado de privacidad.
- */
-@Composable
-fun CookieMetricsHeader(
-    totalCookies: Int,
-    protectedCount: Int,
-    trackerCount: Int,
-    siteCount: Int,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        ),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            MetricItem(
-                count = totalCookies.toString(),
-                label = "Total",
-                icon = Icons.Default.Cookie,
-                iconTint = MaterialTheme.colorScheme.primary
-            )
-            MetricItem(
-                count = protectedCount.toString(),
-                label = "Protegidas",
-                icon = Icons.Default.Security,
-                iconTint = Color(0xFF00C853)
-            )
-            MetricItem(
-                count = trackerCount.toString(),
-                label = "Rastreadores",
-                icon = Icons.Default.Shield,
-                iconTint = if (trackerCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
-            )
-            MetricItem(
-                count = siteCount.toString(),
-                label = "Sitios Web",
-                icon = Icons.Default.Language,
-                iconTint = MaterialTheme.colorScheme.tertiary
-            )
-        }
-    }
-}
-
-@Composable
-fun MetricItem(
-    count: String,
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    iconTint: Color
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(text = count, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-/**
- * Tarjeta para mostrar y gestionar una cookie individual con sus atributos técnicos.
- */
-@Composable
-fun CookieDetailCard(
-    cookie: CookieEntity,
-    onDelete: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var showValue by remember { mutableStateOf(false) }
-
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (cookie.isTracker) {
-                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.12f)
-            } else {
-                MaterialTheme.colorScheme.surface
-            }
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = if (cookie.isTracker) Icons.Default.Shield else Icons.Default.Cookie,
-                        contentDescription = null,
-                        tint = if (cookie.isTracker) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            text = cookie.name,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.Cookie,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(64.dp)
                         )
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = cookie.domain,
-                            style = MaterialTheme.typography.bodySmall,
+                            text = if (searchQuery.isNotBlank()) "No se encontraron cookies para '$searchQuery'"
+                                   else "No hay cookies registradas",
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
-
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Eliminar cookie",
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Etiquetas de estado y origen
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Distintivo de Origen: Protegida (Aislada) vs Estándar
-                if (cookie.isProtected) {
-                    BadgeChip(
-                        label = "🛡️ Pestaña Protegida",
-                        backgroundColor = Color(0xFFE8F5E9),
-                        textColor = Color(0xFF1B5E20)
-                    )
-                } else {
-                    BadgeChip(
-                        label = "🌐 Estándar",
-                        backgroundColor = MaterialTheme.colorScheme.surfaceVariant,
-                        textColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                if (cookie.isTracker) {
-                    BadgeChip(
-                        label = "Rastreador",
-                        backgroundColor = MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
-                        textColor = MaterialTheme.colorScheme.error
-                    )
-                } else {
-                    BadgeChip(
-                        label = cookie.category,
-                        backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                        textColor = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                if (cookie.isSecure) {
-                    BadgeChip(
-                        label = "HTTPS Seguro",
-                        backgroundColor = MaterialTheme.colorScheme.secondaryContainer,
-                        textColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                }
-
-                if (cookie.isHttpOnly) {
-                    BadgeChip(
-                        label = "HttpOnly",
-                        backgroundColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        textColor = MaterialTheme.colorScheme.onTertiaryContainer
-                    )
-                }
-            }
-
-            if (cookie.isProtected) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "⚡ Aislamiento: Se eliminará automáticamente al cerrar la pestaña",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF007E33),
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Valor de la cookie (ocultable para privacidad)
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { showValue = !showValue },
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (showValue) cookie.value else "Valor: •••••••••••• (Toca para ver)",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        maxLines = if (showValue) 3 else 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Icon(
-                        imageVector = if (showValue) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * Tarjeta agrupada por dominio con opción de expandir/contraer y eliminar todas las cookies del sitio.
- */
-@Composable
-fun DomainCookieGroupCard(
-    domain: String,
-    cookies: List<CookieEntity>,
-    onDeleteDomain: () -> Unit,
-    onDeleteSingleCookie: (Long) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val trackersInDomain = cookies.count { it.isTracker }
-    val protectedInDomain = cookies.count { it.isProtected }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .padding(14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Language,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = domain,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                text = "${cookies.size} cookies",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (trackersInDomain > 0) {
-                                Text(
-                                    text = "• $trackersInDomain rastreadores",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                            if (protectedInDomain > 0) {
-                                Text(
-                                    text = "• $protectedInDomain protegidas",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF007E33),
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDeleteDomain, modifier = Modifier.size(36.dp)) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Eliminar cookies de este dominio",
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                    }
-                    Icon(
-                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            AnimatedVisibility(visible = expanded) {
-                Column(
+            } else if (selectedFilter == CookieFilterTab.BY_DOMAIN) {
+                LazyColumn(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                        .fillMaxSize()
+                        .weight(1f),
+                    contentPadding = PaddingValues(bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    cookies.forEach { cookie ->
+                    items(domainGroups.keys.toList(), key = { it }) { domain ->
+                        val cookiesInDomain = domainGroups[domain] ?: emptyList()
+                        DomainCookieGroupCard(
+                            domain = domain,
+                            cookies = cookiesInDomain,
+                            onDeleteCookie = { cookie -> viewModel.deleteCookie(cookie.id, cookie.domain) },
+                            onDeleteDomain = { host -> viewModel.deleteCookiesByDomain(host) }
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f),
+                    contentPadding = PaddingValues(bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(filteredCookies, key = { it.id }) { cookie ->
                         CookieDetailCard(
                             cookie = cookie,
-                            onDelete = { onDeleteSingleCookie(cookie.id) }
+                            onDelete = { item -> viewModel.deleteCookie(item.id, item.domain) }
                         )
                     }
                 }
             }
         }
-    }
-}
 
-@Composable
-fun BadgeChip(
-    label: String,
-    backgroundColor: Color,
-    textColor: Color
-) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(backgroundColor)
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = textColor,
-            fontWeight = FontWeight.Medium
-        )
-    }
-}
+        // Diálogo de confirmación para eliminar rastreadores
+        if (showClearTrackersConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showClearTrackersConfirmation = false },
+                icon = { Icon(Icons.Default.Radar, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                title = { Text("Eliminar todos los rastreadores") },
+                text = { Text("¿Deseas eliminar las $trackerCount cookies clasificadas como rastreadores de publicidad y analítica?") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteTrackerCookies()
+                            showClearTrackersConfirmation = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.testTag("confirm_delete_trackers_btn")
+                    ) {
+                        Text("Eliminar rastreadores")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearTrackersConfirmation = false }) {
+                        Text("Cancelar")
+                    }
+                }
+            )
+        }
 
-@Composable
-fun EmptyCookiesState(searchQuery: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = Icons.Default.Cookie,
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = if (searchQuery.isNotEmpty()) "No se encontraron cookies coincidentes" else "No hay cookies guardadas",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = if (searchQuery.isNotEmpty()) "Prueba con otro término de búsqueda" else "Las cookies generadas por los sitios web aparecerán aquí.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+        // Diálogo de confirmación para vaciar todas las cookies
+        if (showClearAllConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showClearAllConfirmation = false },
+                icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                title = { Text("Vaciar todas las cookies") },
+                text = { Text("¿Deseas eliminar las $totalCount cookies registradas en el navegador y en las sesiones web nativas de GeckoView? Se cerrarán las sesiones en sitios webs.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.clearAllCookies()
+                            showClearAllConfirmation = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.testTag("confirm_clear_all_cookies_btn")
+                    ) {
+                        Text("Vaciar todo")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearAllConfirmation = false }) {
+                        Text("Cancelar")
+                    }
+                }
             )
         }
     }

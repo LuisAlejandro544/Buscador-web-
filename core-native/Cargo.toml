@@ -1,6 +1,6 @@
 [package]
 name = "core-native"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["Browser Project Team"]
 description = "Módulo nativo de alto rendimiento en Rust para seguridad, hashing y filtrado web"
@@ -11,7 +11,10 @@ name = "core_native"
 crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
-# Sin dependencias externas pesadas que requieran compilación de macros de host
+# Motor de filtrado de alto rendimiento compatible con EasyList, EasyPrivacy y sintaxis uBlock
+adblock = "0.13"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 [profile.release]
 opt-level = 3

@@ -110,6 +110,7 @@ jobs:
         run: |
           echo "Iniciando ensamblado de APK Debug..."
           gradle :app:assembleDebug \
+            -PsplitApks \
             --no-build-cache \
             --no-daemon \
             --stacktrace

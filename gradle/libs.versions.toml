@@ -42,6 +42,7 @@ googleServices = "4.5.0"
 credentials = "1.5.0"
 googleid = "1.1.1"
 geckoview = "147.0.20260212191108"
+jsoup = "1.18.3"
 # Versiones nativas de alto rendimiento (C++ y Rust)
 ndkVersion = "28.2.13676358"
 cmakeVersion = "3.31.6"
@@ -109,6 +110,7 @@ androidx-credentials = { group = "androidx.credentials", name = "credentials", v
 androidx-credentials-play-services = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
 googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
 geckoview-omni = { group = "org.mozilla.geckoview", name = "geckoview-omni", version.ref = "geckoview" }
+jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 
 
 [plugins]
