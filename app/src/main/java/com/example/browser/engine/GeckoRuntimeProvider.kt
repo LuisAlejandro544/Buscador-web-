@@ -45,31 +45,29 @@ object GeckoRuntimeProvider {
      * Construye la configuración de alto rendimiento y privacidad avanzada para GeckoView.
      */
     private fun createRuntime(appContext: Context): GeckoRuntime {
-        // Generar archivo de preferencias avanzadas de Gecko para RFP, WebRTC y protección de red
+        // Generar archivo de preferencias avanzadas de Gecko para compatibilidad, ETP y navegación fluida
         val configFile = File(appContext.filesDir, "geckoview-privacy-config.yaml")
         try {
             configFile.writeText(
                 """
                 prefs:
-                  privacy.resistFingerprinting: true
+                  privacy.resistFingerprinting: false
                   privacy.resistFingerprinting.letterboxing: false
                   privacy.trackingprotection.fingerprinting.enabled: true
                   privacy.trackingprotection.cryptomining.enabled: true
                   privacy.trackingprotection.socialtracking.enabled: true
-                  media.peerconnection.enabled: false
+                  media.peerconnection.enabled: true
                   media.peerconnection.ice.no_host: true
                   media.peerconnection.ice.default_address_only: true
-                  media.navigator.enabled: false
-                  network.trr.mode: 2
-                  network.trr.uri: "https://mozilla.cloudflare-dns.com/dns-query"
+                  media.navigator.enabled: true
                   network.cookie.cookieBehavior: 5
                   privacy.partition.network_state: true
-                  privacy.firstparty.isolate: true
-                  privacy.query_stripping.enabled: true
-                  privacy.query_stripping.enabled.pbmode: true
+                  privacy.firstparty.isolate: false
+                  privacy.query_stripping.enabled: false
+                  privacy.query_stripping.enabled.pbmode: false
                   dom.battery.enabled: false
                   dom.gamepad.enabled: false
-                  dom.netinfo.enabled: false
+                  dom.netinfo.enabled: true
                 """.trimIndent()
             )
         } catch (_: Throwable) {
@@ -77,6 +75,7 @@ object GeckoRuntimeProvider {
         }
 
         // Configuración de bloqueo de contenido (Total Cookie Protection + ETP Estricto)
+        // Manteniendo compatibilidad total con tokens de búsqueda y flujos de autenticación
         val contentBlockingSettings = ContentBlocking.Settings.Builder()
             .antiTracking(ContentBlocking.AntiTracking.STRICT)
             .enhancedTrackingProtectionLevel(ContentBlocking.EtpLevel.STRICT)
@@ -85,8 +84,8 @@ object GeckoRuntimeProvider {
             .cookieBehaviorPrivateMode(ContentBlocking.CookieBehavior.ACCEPT_FIRST_PARTY_AND_ISOLATE_OTHERS)
             .cookiePurging(true)
             .strictSocialTrackingProtection(true)
-            .queryParameterStrippingEnabled(true)
-            .queryParameterStrippingPrivateBrowsingEnabled(true)
+            .queryParameterStrippingEnabled(false)
+            .queryParameterStrippingPrivateBrowsingEnabled(false)
             .emailTrackerBlockingPrivateMode(true)
             .build()
 
@@ -94,10 +93,8 @@ object GeckoRuntimeProvider {
             .contentBlocking(contentBlockingSettings)
             .aboutConfigEnabled(true)
             .globalPrivacyControlEnabled(true)
-            // DNS sobre HTTPS cifrado (DoH - Trusted Recursive Resolver)
-            .trustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_FIRST)
-            .trustedRecursiveResolverUri("https://mozilla.cloudflare-dns.com/dns-query")
-            .defaultRecursiveResolverUri("https://mozilla.cloudflare-dns.com/dns-query")
+            // Usar resolución DNS nativa del sistema para garantizar coherencia geográfica con el ISP del dispositivo móvil
+            .trustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_OFF)
 
         if (configFile.exists()) {
             runtimeSettingsBuilder.configFilePath(configFile.absolutePath)

@@ -71,11 +71,11 @@ Este archivo proporciona el contexto fundamental del proyecto para cualquier mod
    - **Persistencia en Room v3:** Almacenado con `isProtected = true` y `contextId` persistido para reconexión de sesión durante la navegación.
    - **Diseño UI:** Distintivo en color esmeralda (`#00897B`), icono de escudo (`Icons.Default.Shield`), pestaña dedicada en `TabsScreen` y página de inicio `BrowserStartPage` adaptada.
 
-6. **Integración Continua, Firma Automática y Entrega P2P en GitHub Actions:**
+6. **Integración Continua, Firma Automática y Artefactos Divididos en GitHub Actions:**
    - **Workflow (`.github/workflows/build-debug.yml`):** Activación exclusivamente manual (`workflow_dispatch`), compilación limpia sin caché (`cache-disabled: true`, `--no-build-cache`), instalación de NDK 28 (`28.2.13676358`), CMake 3.31.6, Rust 2024 y descarga de GeckoView Omni de Mozilla.
-   - **Script de Firma (`generate_debug_keystore.sh`):** Fuerza la generación no interactiva de un archivo `debug.keystore` (PKCS12, RSA 2048 bits) desde cero en el runner de CI para firmar el APK sin requerir interacción ni secretos preexistentes.
-   - **Sincronización Directa P2P al Móvil con Syncthing:** Se inicia un nodo local de Syncthing en el runner (usando identidad TLS fija en `.github/syncthing/` con ID `IAXLEGX-HNWFEWZ-P4OQVFW-VBKMPQ2-ZJI6MX6-OE6YPBD-S4BC346-266H4AO`) y el script `.github/scripts/syncthing_transfer.py` transfiere directamente `app-debug.apk` a la carpeta `/storage/emulated/0/Navegador` de la app **Syncthing-fork** en el teléfono mediante la red global P2P con relays cifrados.
-   - **Secreto de Actions Requerido:** Únicamente `PHONE_SYNCTHING_ID` (el ID del teléfono en Syncthing). Si el teléfono no estuviera en línea o alcanzara el tiempo límite, el APK se preserva intacto en los artefactos descargables de GitHub como respaldo.
+   - **Script de Firma (`generate_debug_keystore.sh`):** Fuerza la generación no interactiva de un archivo `debug.keystore` (PKCS12, RSA 2048 bits) desde cero en el runner de CI para firmar los APKs sin requerir interacción ni secretos preexistentes.
+   - **División por Arquitecturas (ABI Splits):** Gradle genera APKs independientes (`arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86`) con `isUniversalApk = false`. Esto reduce sustancialmente el peso de descarga al incluir únicamente las librerías nativas de cada plataforma.
+   - **Artefactos Separados en GitHub:** Los binarios se suben a GitHub Actions en artefactos individuales (`app-debug-arm64-v8a`, `app-debug-armeabi-v7a`, `app-debug-x86_64`, `app-debug-x86`) para que el usuario descargue directamente desde el móvil solo la variante requerida.
 
 7. **Auditoría y Gestión de Cookies de Navegación (`CookiesScreen.kt`):**
    - **Esquema Room v4:** Persistencia en `CookieEntity` y `CookieDao` de cookies con metadatos clave (nombre, valor, dominio, ruta, caducidad, `isSecure`, `isHttpOnly`, `isTracker`).
@@ -121,5 +121,23 @@ Este archivo proporciona el contexto fundamental del proyecto para cualquier mod
     - **Herramienta de Procesamiento `tools/audio_processor.sh`:** Script ejecutable en Bash y Python que permite convertir audio entre formatos (WAV, MP3, OGG), recortar intervalos con micro-fade (`trim`), dividir paquetes multi-audio por silencios (`split-silence`) y extraer paquetes de tonos (`split-chimes`).
     - **Preferencias en DataStore:** Conmutador `sound_effects_enabled` en `BrowserPreferences` y `BrowserViewModel` integrado con la pantalla de Ajustes, con botón para probar la reproducción en vivo.
     - **Expansión Futura:** Planificada la adición de nuevos efectos de sonido para marcadores ("pop"), cierre de pestañas ("whoosh") y alertas de seguridad.
+
+14. **Gestión de Extensiones Web (WebExtensions) Bajo Demanda y Protección Legal:**
+    - **Conexión Directa con Mozilla Add-ons (AMO):** El APK **no** incorpora binarios de extensiones en sus `assets`, evitando licencias víricas o restrictivas (GPLv3). La descarga se realiza bajo demanda directa y consentimiento del usuario desde los servidores oficiales de Mozilla (`addons.mozilla.org`).
+    - **Gestor Desacoplado (`ExtensionManager.kt`):** Se apoya en `GeckoRuntime.webExtensionController` para la descarga asíncrona de ficheros `.xpi`, reporte de progreso porcentual, instalación en caliente y control de ciclo de vida (`enable`, `disable`, `uninstall`).
+    - **Catálogo Curado (`RecommendedExtension.kt`):** Incluye uBlock Origin (bloqueo de publicidad/rastreo), Dark Reader (modo oscuro), TWP (traducción) y ClearURLs (desinfección de enlaces).
+    - **Pantalla Dedicada (`ExtensionsScreen.kt`):** Gestión visual de complementos activos, catálogo de instalación rápida e instalación mediante URL directa.
+
+15. **Onboarding y Configuración Inicial (`OnboardingScreen.kt`):**
+    - **Flujo de Bienvenida:** Se ejecuta exclusivamente en la primera apertura de la app (controlado por `onboarding_completed` en DataStore).
+    - **Selección de Buscador Predeterminado:** Permite al usuario elegir entre DuckDuckGo, Google, Bing, Brave o Ecosia antes de comenzar a navegar.
+    - **Preselección de Extensiones:** Ofrece la lista recomendada para que el usuario elija cuáles descargar e instalar automáticamente en segundo plano.
+
+16. **Endurecimiento de Seguridad (Security Hardening):**
+    - **Cifrado Fail-Closed:** Uso de `EncryptedSharedPreferences` con fallback seguro en memoria ante fallos del hardware Keystore.
+    - **Mitigación de Path Traversal:** Verificación estricta de rutas canónicas (`canonicalPath`) en descargas para evitar fugas de archivos.
+    - **Configuración de Seguridad de Red:** Restricción estricta de tráfico en texto claro con `cleartextTrafficPermitted="false"`, habilitando excepciones únicamente para `localhost`.
+    - **FileProvider Aislado:** Directorio dedicado y restringido `share/` para compartir archivos de forma segura.
+
 
 

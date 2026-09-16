@@ -251,6 +251,7 @@ class BrowserRepository(
     val blockLocationPrompts: Flow<Boolean> = preferences.blockLocationPrompts
     val blockMediaPrompts: Flow<Boolean> = preferences.blockMediaPrompts
     val isSoundEffectsEnabled: Flow<Boolean> = preferences.isSoundEffectsEnabled
+    val isOnboardingCompleted: Flow<Boolean> = preferences.isOnboardingCompleted
 
     suspend fun setSearchEngine(engine: SearchEngine) = preferences.setSearchEngine(engine)
     suspend fun setDesktopModeDefault(enabled: Boolean) = preferences.setDesktopModeDefault(enabled)
@@ -263,4 +264,5 @@ class BrowserRepository(
     suspend fun setBlockLocationPrompts(enabled: Boolean) = preferences.setBlockLocationPrompts(enabled)
     suspend fun setBlockMediaPrompts(enabled: Boolean) = preferences.setBlockMediaPrompts(enabled)
     suspend fun setSoundEffectsEnabled(enabled: Boolean) = preferences.setSoundEffectsEnabled(enabled)
+    suspend fun setOnboardingCompleted(completed: Boolean) = preferences.setOnboardingCompleted(completed)
 }

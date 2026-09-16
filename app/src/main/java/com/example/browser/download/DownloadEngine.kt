@@ -79,10 +79,17 @@ object DownloadEngine {
         val appContext = context.applicationContext
         val fileName = DownloadManagerHelper.resolveFileName(url, contentDisposition, mimeType)
 
-        // Crear o preparar el archivo de destino local
+        // Crear o preparar el directorio de destino local (aislado en subdirectorio seguro de descargas)
         val downloadsDir = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?: appContext.filesDir
-        val destinationFile = getUniqueFile(downloadsDir, fileName)
+            ?: File(appContext.filesDir, "downloads").apply { mkdirs() }
+        
+        // Resolver y verificar canónicamente la ruta para neutralizar ataques de Path Traversal
+        val candidateFile = getUniqueFile(downloadsDir, fileName)
+        val destinationFile = if (candidateFile.canonicalPath.startsWith(downloadsDir.canonicalPath)) {
+            candidateFile
+        } else {
+            File(downloadsDir, "descarga_${System.currentTimeMillis()}" + (DownloadManagerHelper.mimeTypeToExtension(mimeType) ?: ".bin"))
+        }
 
         // Crear registro en base de datos Room
         val database = BrowserDatabase.getInstance(appContext)
@@ -416,14 +423,16 @@ object DownloadEngine {
     }
 
     /**
-     * Genera un archivo con nombre único para evitar sobreescrituras accidentales.
+     * Genera un archivo con nombre único y sanitizado para evitar sobreescrituras accidentales y navegación de ruta.
      */
     private fun getUniqueFile(directory: File, baseFileName: String): File {
-        var file = File(directory, baseFileName)
+        val sanitized = File(baseFileName).name.replace("..", "").replace("/", "").replace("\\", "").trim()
+        val safeName = if (sanitized.isBlank()) "descarga_${System.currentTimeMillis()}.bin" else sanitized
+        var file = File(directory, safeName)
         if (!file.exists()) return file
 
-        val nameWithoutExt = baseFileName.substringBeforeLast('.')
-        val ext = if (baseFileName.contains('.')) "." + baseFileName.substringAfterLast('.') else ""
+        val nameWithoutExt = safeName.substringBeforeLast('.')
+        val ext = if (safeName.contains('.')) "." + safeName.substringAfterLast('.') else ""
 
         var counter = 1
         while (file.exists()) {

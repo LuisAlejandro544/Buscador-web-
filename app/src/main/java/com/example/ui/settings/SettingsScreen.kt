@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Cookie
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Javascript
@@ -75,7 +76,8 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToCookies: () -> Unit = {},
     onNavigateToAccounts: () -> Unit = {},
-    onNavigateToSitePermissions: () -> Unit = {}
+    onNavigateToSitePermissions: () -> Unit = {},
+    onNavigateToExtensions: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -235,6 +237,55 @@ fun SettingsScreen(
                             modifier = Modifier.testTag("setting_desktop_switch")
                         )
                     }
+                }
+            }
+
+            // Sección Extensiones y Complementos
+            Text(
+                text = "Extensiones y Complementos",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToExtensions() }
+                    .testTag("setting_extensions_card"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Extension,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Gestionar Extensiones Web",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            text = "Descarga uBlock Origin, modo oscuro y más desde Mozilla Add-ons",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
 

@@ -16,6 +16,9 @@ import com.example.browser.engine.GeckoRuntimeProvider
 import com.example.browser.engine.GeckoSessionManager
 import com.example.browser.engine.GeckoViewEngine
 import com.example.browser.engine.WebPromptRequest
+import com.example.browser.extension.ExtensionManager
+import com.example.browser.extension.RecommendedExtension
+import com.example.browser.extension.WebExtensionModel
 import com.example.browser.lifecycle.AppHibernationManager
 import com.example.browser.thumbnail.TabThumbnailManager
 import com.example.data.local.BrowserDatabase
@@ -94,6 +97,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     val blockMediaPrompts: StateFlow<Boolean> = repository.blockMediaPrompts
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    // --- Onboarding y Configuración Inicial ---
+    val isOnboardingCompleted: StateFlow<Boolean> = repository.isOnboardingCompleted
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    // --- Gestor de Extensiones WebExtension ---
+    val extensionManager = ExtensionManager.getInstance(application)
+    val installedExtensions: StateFlow<List<WebExtensionModel>> = extensionManager.installedExtensions
+    val extensionDownloadProgress: StateFlow<Map<String, Float>> = extensionManager.downloadProgress
+    val isExtensionsLoading: StateFlow<Boolean> = extensionManager.isLoading
+    val recommendedExtensions: List<RecommendedExtension> = RecommendedExtension.CATALOG
 
     // --- Preferencias ---
     val searchEngine: StateFlow<SearchEngine> = repository.searchEngine
@@ -1256,5 +1270,96 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
      */
     fun dismissWebSignInPrompt() {
         _webSignInPrompt.value = null
+    }
+
+    // ==========================================
+    // GESTIÓN DE EXTENSIONES Y ONBOARDING
+    // ==========================================
+
+    /**
+     * Marca el onboarding de selección inicial como completado.
+     */
+    fun setOnboardingCompleted(completed: Boolean = true) {
+        viewModelScope.launch {
+            repository.setOnboardingCompleted(completed)
+        }
+    }
+
+    /**
+     * Actualiza el motor de búsqueda predeterminado.
+     */
+    fun selectSearchEngine(engine: SearchEngine) {
+        viewModelScope.launch {
+            repository.setSearchEngine(engine)
+        }
+    }
+
+    /**
+     * Refresca la lista de extensiones instaladas en GeckoView.
+     */
+    fun refreshInstalledExtensions() {
+        viewModelScope.launch {
+            extensionManager.refreshInstalledExtensions()
+        }
+    }
+
+    /**
+     * Descarga e instala una extensión del catálogo oficial de Mozilla Add-ons.
+     */
+    fun downloadAndInstallExtension(
+        recommended: RecommendedExtension,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val result = extensionManager.downloadAndInstall(recommended.id, recommended.downloadUrl)
+            result.onSuccess {
+                onSuccess()
+            }.onFailure { error ->
+                onError(error.localizedMessage ?: "Error al instalar la extensión")
+            }
+        }
+    }
+
+    /**
+     * Descarga e instala una extensión desde un enlace directo seguro HTTPS (.xpi).
+     */
+    fun installCustomExtension(
+        downloadUrl: String,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val trimmed = downloadUrl.trim()
+            if (trimmed.isBlank() || !trimmed.startsWith("https://", ignoreCase = true)) {
+                onError("Por seguridad, el enlace debe iniciar con https://")
+                return@launch
+            }
+            val fakeId = "custom_${System.currentTimeMillis()}"
+            val result = extensionManager.downloadAndInstall(fakeId, trimmed)
+            result.onSuccess {
+                onSuccess()
+            }.onFailure { error ->
+                onError(error.localizedMessage ?: "No se pudo descargar la extensión")
+            }
+        }
+    }
+
+    /**
+     * Habilita o deshabilita una extensión instalada en GeckoView.
+     */
+    fun toggleExtensionEnabled(extensionId: String, enabled: Boolean) {
+        viewModelScope.launch {
+            extensionManager.setExtensionEnabled(extensionId, enabled)
+        }
+    }
+
+    /**
+     * Desinstala una extensión instalada en GeckoView.
+     */
+    fun uninstallExtension(extensionId: String) {
+        viewModelScope.launch {
+            extensionManager.uninstallExtension(extensionId)
+        }
     }
 }

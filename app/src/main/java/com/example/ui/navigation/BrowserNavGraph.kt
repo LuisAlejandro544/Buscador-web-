@@ -1,6 +1,9 @@
 package com.example.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -10,7 +13,9 @@ import com.example.ui.bookmarks.BookmarksScreen
 import com.example.ui.browser.BrowserScreen
 import com.example.ui.cookies.CookiesScreen
 import com.example.ui.downloads.DownloadsScreen
+import com.example.ui.extension.ExtensionsScreen
 import com.example.ui.history.HistoryScreen
+import com.example.ui.onboarding.OnboardingScreen
 import com.example.ui.permissions.SitePermissionsScreen
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.tabs.TabsScreen
@@ -18,18 +23,41 @@ import com.example.viewmodel.BrowserViewModel
 
 /**
  * Grafo de navegación principal de la aplicación del navegador web.
- * Administra el enrutamiento desacoplado entre las distintas pantallas:
- * Navegador, Pestañas, Marcadores, Historial, Descargas, Cookies de navegación, Ajustes, Cuentas y Permisos por Sitio.
+ * Administra el enrutamiento desacoplado entre las distintas pantallas dedicadas:
+ * Navegador, Pestañas, Marcadores, Historial, Descargas, Cookies, Ajustes, Cuentas,
+ * Permisos por Sitio, Extensiones y Onboarding de bienvenida inicial.
  */
 @Composable
 fun BrowserNavGraph(
     viewModel: BrowserViewModel,
     navController: NavHostController = rememberNavController()
 ) {
+    val isOnboardingCompleted by viewModel.isOnboardingCompleted.collectAsStateWithLifecycle()
+
+    // Redirige al Onboarding si el usuario aún no ha realizado la configuración inicial
+    LaunchedEffect(isOnboardingCompleted) {
+        if (!isOnboardingCompleted) {
+            navController.navigate(Screen.Onboarding.route) {
+                popUpTo(Screen.Browser.route) { inclusive = true }
+            }
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = Screen.Browser.route
     ) {
+        composable(Screen.Onboarding.route) {
+            OnboardingScreen(
+                viewModel = viewModel,
+                onCompleteOnboarding = {
+                    navController.navigate(Screen.Browser.route) {
+                        popUpTo(Screen.Onboarding.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
         composable(Screen.Browser.route) {
             BrowserScreen(
                 viewModel = viewModel,
@@ -39,7 +67,8 @@ fun BrowserNavGraph(
                 onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
                 onNavigateToDownloads = { navController.navigate(Screen.Downloads.route) },
                 onNavigateToCookies = { navController.navigate(Screen.Cookies.route) },
-                onNavigateToAccounts = { navController.navigate(Screen.Accounts.route) }
+                onNavigateToAccounts = { navController.navigate(Screen.Accounts.route) },
+                onNavigateToExtensions = { navController.navigate(Screen.Extensions.route) }
             )
         }
 
@@ -92,13 +121,21 @@ fun BrowserNavGraph(
             )
         }
 
+        composable(Screen.Extensions.route) {
+            ExtensionsScreen(
+                viewModel = viewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
         composable(Screen.Settings.route) {
             SettingsScreen(
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToCookies = { navController.navigate(Screen.Cookies.route) },
                 onNavigateToAccounts = { navController.navigate(Screen.Accounts.route) },
-                onNavigateToSitePermissions = { navController.navigate(Screen.SitePermissions.route) }
+                onNavigateToSitePermissions = { navController.navigate(Screen.SitePermissions.route) },
+                onNavigateToExtensions = { navController.navigate(Screen.Extensions.route) }
             )
         }
     }

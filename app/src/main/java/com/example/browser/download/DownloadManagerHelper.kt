@@ -51,10 +51,11 @@ object DownloadManagerHelper {
     }
 
     /**
-     * Determina el nombre de archivo más exacto posible para la descarga.
+     * Determina el nombre de archivo más exacto y lo sanitiza estrictamente para neutralizar
+     * ataques de Path Traversal (../, ..\\) y caracteres inválidos en el sistema de archivos.
      */
     fun resolveFileName(url: String, contentDisposition: String?, mimeType: String?): String {
-        return try {
+        val rawCandidate = try {
             val guessed = URLUtil.guessFileName(url, contentDisposition, mimeType)
             if (guessed.isNotBlank() && guessed != "downloadfile") {
                 guessed
@@ -67,7 +68,30 @@ object DownloadManagerHelper {
                 }
             }
         } catch (_: Exception) {
-            "archivo_${System.currentTimeMillis()}"
+            "descarga_${System.currentTimeMillis()}" + (mimeTypeToExtension(mimeType) ?: ".bin")
+        }
+
+        return sanitizeFileName(rawCandidate, mimeType)
+    }
+
+    /**
+     * Sanitiza rigurosamente una cadena para garantizar que sea un nombre de archivo seguro y aislado:
+     * - Extrae solo el nombre base descartando prefijos de carpetas o directorios.
+     * - Remueve secuencias relativas de navegación (..).
+     * - Filtra caracteres especiales o bytes nulos (\x00).
+     */
+    fun sanitizeFileName(rawName: String, mimeType: String? = null): String {
+        // Extraer únicamente el nombre base terminal
+        var clean = java.io.File(rawName).name
+        // Eliminar secuencias de salto de directorio y separadores
+        clean = clean.replace("..", "").replace("/", "").replace("\\", "").trim()
+        // Reemplazar caracteres reservados o de control en sistemas de archivos
+        clean = clean.replace(Regex("[\\\\/:*?\"<>|\\x00-\\x1F]"), "_")
+
+        return if (clean.isBlank() || clean == "." || clean == "..") {
+            "descarga_${System.currentTimeMillis()}" + (mimeTypeToExtension(mimeType) ?: ".bin")
+        } else {
+            clean
         }
     }
 
@@ -89,7 +113,7 @@ object DownloadManagerHelper {
     /**
      * Mapea un tipo MIME a su extensión común de archivo.
      */
-    private fun mimeTypeToExtension(mimeType: String?): String? {
+    fun mimeTypeToExtension(mimeType: String?): String? {
         if (mimeType == null) return null
         val ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType)
         return if (!ext.isNullOrBlank()) ".$ext" else null

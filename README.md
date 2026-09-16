@@ -22,6 +22,28 @@ Navegador web moderno, modular y extensible para dispositivos Android (Android 1
 - **Modo Normal, Protegido e Incógnito**: Tres modos de navegación diferenciados: normal (persistencia estándar), protegida (aislamiento por contenedor contextual) e incógnito (sin rastro de historial ni cookies locales).
 - **Omnibox inteligente**: Barra de direcciones y búsqueda integrada con detección de URLs y compatibilidad con DuckDuckGo, Google, Bing, Brave y Ecosia.
 
+### 🧩 Gestión y Descarga de Extensiones Web (Mozilla Add-ons)
+- **Descarga Directa Bajo Demanda:** Conexión segura con el repositorio oficial de complementos de Mozilla (`addons.mozilla.org`). La app no empaqueta extensiones de terceros dentro de los activos del APK, salvaguardando la distribución legal, el código cerrado y evitando problemas de licencias víricas (GPL).
+- **Catálogo de Extensiones Recomendadas:** Acceso directo para instalar y configurar complementos populares:
+  - 🛡️ **uBlock Origin:** Bloqueador de anuncios eficiente y ligero de amplio espectro.
+  - 🌙 **Dark Reader:** Modo oscuro universal para todas las páginas web.
+  - 🌐 **TWP (Translate Web Pages):** Traducción en tiempo real de páginas web completas.
+  - 🔗 **ClearURLs:** Eliminación automática de parámetros y tokens de rastreo en enlaces.
+- **Ciclo de Vida Completo (`ExtensionManager`):** Integración con `GeckoRuntime.webExtensionController` para instalación en vivo mediante archivos `.xpi`, activación/desactivación dinámica, desinstalación con un toque y monitor de progreso de descarga.
+- **Pantalla Dedicada (`ExtensionsScreen`):** Panel visual con tarjetas de complementos instalados, explorador de catálogo y cuadro de diálogo para descargar e instalar extensiones desde cualquier URL directa.
+
+### 🚀 Onboarding y Configuración Inicial de Bienvenida
+- **Primera Experiencia Personalizada (`OnboardingScreen`):** Flujo de configuración que se despliega únicamente en la primera ejecución de la app:
+  - **Elección del Motor de Búsqueda:** El usuario selecciona su buscador predeterminado de inicio (DuckDuckGo, Google, Bing, Brave o Ecosia).
+  - **Selección de Extensiones Recomendadas:** El usuario marca cuáles complementos desea descargar de inmediato y cuáles omitir.
+  - **Instalación Desatendida:** Descarga e instalación automática en segundo plano con indicadores de progreso visuales antes de ingresar al navegador principal.
+
+### 🔒 Blindaje de Seguridad y Cifrado del Sistema
+- **Cifrado Fail-Closed:** Implementación de cifrado para almacenamiento seguro de credenciales con fallback en memoria para evitar caídas catastróficas del sistema.
+- **Protección contra Path Traversal:** Verificación estricta de rutas canónicas (`canonicalPath`) en descargas y almacenamiento para bloquear desbordamientos fuera de las carpetas autorizadas.
+- **Configuración de Seguridad de Red HTTPS:** Directiva `network_security_config.xml` estricta que prohíbe tráfico en texto claro (`cleartextTrafficPermitted="false"`) en dominios generales, restringiendo excepciones únicamente al entorno local de desarrollo (`localhost`).
+- **FileProvider Aislado:** Rutas de intercambio de archivos restringidas a directorios privados y acotados (`share/`).
+
 ### 🍪 Gestor y Auditor de Cookies de Navegación
 - **Auditoría Detallada:** Visualización en tiempo real de todas las cookies almacenadas, detallando nombre, dominio de procedencia, ruta, caducidad y atributos de seguridad (`Secure`, `HttpOnly`).
 - **Detección de Rastreadores (Trackers):** Identificación automática de cookies de telemetría y publicidad de terceros con distintivo rojo y filtro rápido ("Solo rastreadores").
@@ -130,27 +152,25 @@ cargo check --manifest-path core-native/Cargo.toml
 gradle :app:testDebugUnitTest
 ```
 
-El APK resultante se genera en el directorio:
-`app/build/outputs/apk/debug/app-debug.apk` y contiene las librerías binarias nativas `libbrowser_native.so` y `libxul.so` para las arquitecturas `arm64-v8a`, `armeabi-v7a`, `x86` y `x86_64`.
+Los APKs resultantes se generan divididos por arquitectura en el directorio `app/build/outputs/apk/debug/`:
+- `app-arm64-v8a-debug.apk`: Optimizado para teléfonos móviles Android modernos de 64 bits.
+- `app-armeabi-v7a-debug.apk`: Compatible con dispositivos móviles de 32 bits.
+- `app-x86_64-debug.apk`: Para emuladores y dispositivos ChromeOS de 64 bits.
+- `app-x86-debug.apk`: Para emuladores y entornos x86 de 32 bits.
+
+Esta división por ABI elimina el empaquetado redundante de librerías nativas en un APK universal monolítico, reduciendo drásticamente el tamaño de descarga e instalación.
 
 ---
 
-## 🤖 Integración Continua (GitHub Actions CI)
+## 🤖 Integración Continua y Artefactos (GitHub Actions CI)
 
 El repositorio cuenta con un flujo automatizado en `.github/workflows/build-debug.yml` con activación **exclusivamente manual** (`workflow_dispatch`):
 - **Compilación Limpia (Sin Caché):** Descarga el código, instala Java JDK 17, Android NDK 28, CMake 3.31+, Rust 2024 y descarga las dependencias de GeckoView Omni de Mozilla sin utilizar cachés previas.
 - **Generación Forzada de Firma:** Ejecuta `./generate_debug_keystore.sh` para generar un almacén de claves `debug.keystore` (RSA 2048 bits / PKCS12) desde cero de forma 100% desatendida y obligatoria.
-- **Sincronización Directa P2P con Syncthing:** Tras compilar el APK de depuración, levanta un nodo Syncthing con certificado fijo y se conecta punto a punto con tu app **Syncthing-fork** en el teléfono, depositando automáticamente `app-debug.apk` en `/storage/emulated/0/Navegador/app-debug.apk` mediante la red P2P global con relays cifrados.
-- **Artefacto de Respaldo:** Si la app de Syncthing en el teléfono no estuviera activa, el APK se guarda de forma segura como artefacto descargable en la pestaña Actions de GitHub.
+- **Artefactos Separados por Arquitectura:** Tras compilar con ABI Splits, sube cada APK como un artefacto independiente en la pestaña Actions de GitHub:
+  - 📦 `app-debug-arm64-v8a`: APK para teléfonos móviles de 64 bits (la mayoría de smartphones actuales).
+  - 📦 `app-debug-armeabi-v7a`: APK para teléfonos móviles de 32 bits.
+  - 📦 `app-debug-x86_64`: APK para emuladores y portátiles Android.
+  - 📦 `app-debug-x86`: APK para emuladores de 32 bits.
 
-### 🔐 Secreto Requerido en GitHub (Settings ➔ Secrets and variables ➔ Actions)
-
-| Secreto | Descripción | Dónde obtenerlo |
-| :--- | :--- | :--- |
-| `PHONE_SYNCTHING_ID` | Device ID de tu teléfono en la app Syncthing-fork | En tu app: Menú ➔ *Mostrar ID de este dispositivo* (copiar código) |
-
-### 📱 Configuración en Syncthing-fork (Teléfono)
-1. **Carpeta compartida:** Etiqueta: `Navegador`, ID: `navegador-apk`, Ruta: `/storage/emulated/0/Navegador`.
-2. **Dispositivo GitHub Actions:** Añadir dispositivo con ID:
-   `IAXLEGX-HNWFEWZ-P4OQVFW-VBKMPQ2-ZJI6MX6-OE6YPBD-S4BC346-266H4AO`
-   Nombre: `GitHub Actions`, y marcar la casilla de la carpeta `Navegador`.
+De este modo, puedes descargar directamente desde GitHub en tu teléfono móvil únicamente el APK que necesitas, ahorrando tiempo y datos móviles sin requerir herramientas intermedias.

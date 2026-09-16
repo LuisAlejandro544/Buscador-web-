@@ -32,6 +32,11 @@ class BrowserPreferences(private val context: Context) {
         val KEY_BLOCK_LOCATION_PROMPTS = booleanPreferencesKey("block_location_prompts")
         val KEY_BLOCK_MEDIA_PROMPTS = booleanPreferencesKey("block_media_prompts")
         val KEY_SOUND_EFFECTS_ENABLED = booleanPreferencesKey("sound_effects_enabled")
+        val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+    }
+
+    val isOnboardingCompleted: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_ONBOARDING_COMPLETED] ?: false
     }
 
     val searchEngine: Flow<SearchEngine> = context.dataStore.data.map { preferences ->
@@ -137,6 +142,12 @@ class BrowserPreferences(private val context: Context) {
     suspend fun setSoundEffectsEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[KEY_SOUND_EFFECTS_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setOnboardingCompleted(completed: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_ONBOARDING_COMPLETED] = completed
         }
     }
 }

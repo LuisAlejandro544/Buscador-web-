@@ -2,5 +2,7 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-path name="external_downloads" path="Download" />
     <external-files-path name="external_files_downloads" path="Download" />
-    <files-path name="internal_files" path="." />
+    <!-- Directorios aislados específicos para evitar exponer bases de datos o preferencias internas -->
+    <files-path name="internal_downloads" path="downloads/" />
+    <files-path name="internal_shared" path="shared/" />
 </paths>

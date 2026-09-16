@@ -16,7 +16,7 @@ enum class SearchEngine(
     ),
     GOOGLE(
         displayName = "Google",
-        searchUrl = "https://www.google.com/search?q=",
+        searchUrl = "https://www.google.com/search?client=firefox-b-m&q=",
         homeUrl = "https://www.google.com"
     ),
     BING(

@@ -29,6 +29,10 @@ app/src/main/
 │   │   │   ├── DownloadEngine.kt           # Motor autónomo de descargas concurrentes en streaming con pausas y reanudaciones
 │   │   │   ├── DownloadNotificationHelper.kt # Gestor de notificaciones nativas de progreso y finalización
 │   │   │   └── DownloadManagerHelper.kt    # Integración legacy con el servicio del sistema
+│   │   ├── extension/
+│   │   │   ├── ExtensionManager.kt         # Gestor integral de WebExtensions sobre GeckoView (descarga AMO, instalación, ciclo de vida)
+│   │   │   ├── RecommendedExtension.kt     # Catálogo oficial curado (uBlock Origin, Dark Reader, TWP, ClearURLs)
+│   │   │   └── WebExtensionModel.kt        # Modelo de estado para la interfaz en Compose
 │   │   ├── sound/
 │   │   │   └── SoundEffectManager.kt       # Gestor de efectos sonoros y háptica de baja latencia con SoundPool
 │   │   ├── engine/
@@ -85,11 +89,15 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   │   └── CookiesScreen.kt         # Pantalla de auditoría de cookies, detección de rastreadores y borrado
 │   ├── downloads/
 │   │   └── DownloadsScreen.kt       # Pantalla avanzada de descargas con búsqueda, apertura y vaciado
+│   ├── extension/
+│   │   └── ExtensionsScreen.kt      # Pantalla dedicada de gestión y exploración de WebExtensions
 │   ├── history/
 │   │   └── HistoryScreen.kt         # Pantalla completa de historial con búsqueda y eliminación
 │   ├── navigation/
 │   │   ├── BrowserNavGraph.kt       # Grafo y rutas de navegación con Jetpack Navigation Compose
 │   │   └── Screen.kt                # Definición de pantallas y rutas fuertemente tipadas
+│   ├── onboarding/
+│   │   └── OnboardingScreen.kt      # Pantalla inicial de bienvenida (selección de buscador y extensiones)
 │   ├── permissions/
 │   │   └── SitePermissionsScreen.kt # Pantalla dedicada para gestión de permisos por sitio y políticas "No Preguntar"
 │   ├── settings/
@@ -105,13 +113,8 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   └── BrowserViewModel.kt          # Gestor de estado centralizado que coordina motor Gecko, Room y UI
 ├── MainActivity.kt                  # Activity principal con configuración Edge-to-Edge y contenedor Compose
 ├── .github/
-│   ├── scripts/
-│   │   └── syncthing_transfer.py    # Script de sincronización P2P desatendida hacia Syncthing-fork
-│   ├── syncthing/
-│   │   ├── cert.pem                 # Certificado TLS fijo de Syncthing para GitHub Actions
-│   │   └── key.pem                  # Clave privada TLS fija de Syncthing para GitHub Actions
 │   └── workflows/
-│       └── build-debug.yml          # Workflow CI de GitHub Actions: compilación manual sin caché y entrega P2P
+│       └── build-debug.yml          # Workflow CI de GitHub Actions: compilación manual sin caché y artefactos divididos por ABI
 └── generate_debug_keystore.sh       # Script de generación obligatoria y desatendida de debug.keystore (PKCS12)
 ```
 
@@ -159,13 +162,16 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
   - **Protección Visual FLAG_SECURE:** Bloqueo de capturas de pantalla y ocultación visual en la multitarea de Android al navegar en incógnito.
   - **Arquitectura Abierta para Expansión Continua:** El motor de incógnito está concebido para incorporar progresivamente más capas de defensa activa (bloqueo heurístico de telemetría oculta en scripts, virtualización de red y sandboxing riguroso).
 - **Capa Nativa Híbrida (C++26 / Rust 2024):** Preparada mediante NDK r28 y CMake 3.31+ para vincular librerías `.so` de alto rendimiento. Rust asume la lógica pesada de seguridad (bloqueo de anuncios, hashes criptográficos, protección de rastreo) y C++ proporciona aceleración por hardware y enlace con APIs nativas del sistema. Los artefactos temporales de compilación de CMake y Cargo quedan completamente aislados por `.gitignore`.
-- **Ecosistema de Extensiones Web (WebExtensions) y Sinergia Híbrida con Rust:**
-  - **Soporte Nativo de Extensiones en GeckoView:** La arquitectura aprovecha directamente `GeckoRuntime.webExtensionController` para gestionar el ciclo de vida de extensiones de navegador completas (`WebExtensions`).
-  - **Extensiones Preinstaladas de Fábrica (Built-in Extensions):**
-    - Las extensiones clave de privacidad y bloqueo (como **uBlock Origin**) se empaquetan en el APK dentro de `app/src/main/assets/extensions/` como paquetes `.xpi` o carpetas de manifiesto.
-    - Durante la inicialización del motor en `GeckoRuntimeProvider`, se invoca `runtime.webExtensionController.installBuiltIn("resource://android/assets/extensions/ublock_origin/")`. Esto garantiza protección activa desde el primer milisegundo de navegación, sin requerir descargas adicionales ni configuración previa del usuario móvil.
-    - Soporte planificado para catálogo local de extensiones, instalación desde archivos `.xpi` descargados o enlaces web, y habilitación/deshabilitación individual.
-  - **Sinergia Híbrida uBlock Origin (JS/Web) + Motor Nativo Rust (`core-native`):**
+- **Ecosistema de Extensiones Web (WebExtensions) Bajo Demanda y Prevención de Licencias Víricas:**
+  - **Descarga Oficial Directa desde Mozilla Add-ons (AMO):** En estricto cumplimiento de la política de código cerrado y protección legal de propiedad intelectual, el proyecto **NO** empaqueta binarios `.xpi` de extensiones bajo licencias copyleft o víricas (como GPLv3 en uBlock Origin) dentro del APK o carpeta `assets`. En su lugar, el navegador actúa como un agente de usuario neutral que se conecta directamente a los servidores oficiales de Mozilla (`https://addons.mozilla.org/firefox/downloads/latest/...`) bajo petición explícita y consentimiento del usuario.
+  - **Ciclo de Vida y Gestor Desacoplado (`ExtensionManager`):**
+    - Se apoya en `GeckoRuntime.webExtensionController` para la descarga, verificación de permisos e instalación dinámica en tiempo de ejecución.
+    - Soporta la activación (`enable()`), desactivación (`disable()`) y desinstalación (`uninstall()`) en caliente sin requerir reinicio del proceso de GeckoView.
+    - Emite flujos reactivos `StateFlow` con el progreso porcentual de descarga por extensión y la lista actualizada de complementos para consumo en Jetpack Compose.
+  - **Flujo de Configuración Inicial (Onboarding) y Pantalla Dedicada:**
+    - `OnboardingScreen`: En el primer arranque, el usuario selecciona qué motor de búsqueda desea fijar y qué extensiones del catálogo desea instalar automáticamente antes de navegar.
+    - `ExtensionsScreen`: Pantalla dedicada para auditar complementos activos, alternar su estado, eliminarlos o instalar cualquier extensión externa mediante URL directa.
+  - **Sinergia Futura con el Motor Nativo Rust (`core-native`):**
     En smartphones, ejecutar cientos de miles de reglas exclusivamente en el motor JavaScript de una extensión satura el hilo de eventos y consume batería. La arquitectura propone una división de responsabilidades simbiótica:
     1. *uBlock Origin (Capa Web / Interfaz / Inyección DOM):* Proporciona la interfaz de usuario familiar, defusers de scriptlets para evadir anti-adblockers y filtrado cosmético de nodos en el DOM.
     2. *Rust `core-native` (Capa de Rendimiento Extremo / JNI):*
@@ -173,7 +179,7 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
        - **Desinfección Instantánea de URLs (Query Parameter Stripping):** Limpieza inmediata de tokens de seguimiento y telemetría (`fbclid`, `gclid`, `utm_*`, `yclid`, `mc_eid`) en Rust antes de despachar la petición de red.
        - **Filtrado Previo a Nivel de Red y DNS:** Bloqueo de peticiones maliciosas antes de la negociación TLS en GeckoView, reduciendo drásticamente el consumo de datos móviles y energía del procesador.
        - **Auditoría y Métricas Zero-Copy:** Contadores de elementos bloqueados y telemetría de amenazas expuestos a Compose con latencia mínima.
-- **Canal de Despliegue P2P (GitHub Actions + Syncthing):** El flujo en `.github/workflows/build-debug.yml` implementa entrega continua sin intermediarios: compila el APK Debug de forma limpia (sin cachés), genera una firma `debug.keystore` fresca y transfiere el binario directamente al almacenamiento del móvil (`/storage/emulated/0/Navegador/app-debug.apk`) a través del protocolo P2P de Syncthing con relays globales cifrados de extremo a extremo.
+- **Canal de Despliegue y Artefactos por Arquitectura (GitHub Actions CI):** El flujo en `.github/workflows/build-debug.yml` implementa compilación continua sin intermediarios: compila los APKs de depuración de forma limpia (sin cachés), genera una firma `debug.keystore` fresca, genera binarios divididos por arquitectura (`splits.abi`) y los publica como artefactos independientes en GitHub (`app-debug-arm64-v8a`, `app-debug-armeabi-v7a`, `app-debug-x86_64`, `app-debug-x86`) para permitir descargas optimizadas directamente al móvil sin pesos universales redundantes.
 - **Gestión de Cuentas e Identidad Web Integrada (`AccountCredentialManager` y `WebSignInBridge`):**
   - **Vinculación Nativa con `androidx.credentials`:** Utiliza `CredentialManager` y `GetGoogleIdOption` para enlazar cuentas de Google o credenciales personalizadas en el dispositivo móvil sin depender de servicios propietarios inflexibles.
   - **Almacenamiento Reactivo con Room v4 (`UserAccountEntity` / `UserAccountDao`):** Persistencia local de perfiles con soporte multicuenta, avatar, correo y bandera de cuenta activa (`isActive`), permitiendo conmutar la identidad principal en cualquier momento.

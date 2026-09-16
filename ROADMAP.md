@@ -52,10 +52,21 @@ Este documento traza las fases de desarrollo, hitos completados y objetivos futu
   - **Total Cookie Protection (dFPI):** Aislamiento estricto de cookies por sitio web impidiendo el seguimiento entre dominios distintos.
   - **Purga Inmediata de Memoria RAM al Cerrar:** Destrucción y limpieza forzada de cachés volátiles (`ALL_CACHES`, `AUTH_SESSIONS`), eliminación de miniaturas y recolección de basura con `System.gc()`.
   - **Protección de Pantalla FLAG_SECURE:** Bloqueo de capturas de pantalla y ofuscación en la multitarea de Android durante la navegación anónima.
-- [x] **Flujo de Integración Continua (CI) y Entrega Directa P2P:** Workflow en GitHub Actions (`.github/workflows/build-debug.yml`) con activación exclusivamente manual (`workflow_dispatch`), compilación limpia sin caché (NDK 28, CMake 3.31, Rust 2024, GeckoView Omni), generación forzada de firma con `generate_debug_keystore.sh` y sincronización directa P2P desatendida mediante Syncthing a la carpeta `/storage/emulated/0/Navegador/app-debug.apk` del móvil.
+- [x] **Flujo de Integración Continua (CI) y Artefactos Divididos por ABI:** Workflow en GitHub Actions (`.github/workflows/build-debug.yml`) con activación exclusivamente manual (`workflow_dispatch`), compilación limpia sin caché (NDK 28, CMake 3.31, Rust 2024, GeckoView Omni), generación forzada de firma con `generate_debug_keystore.sh`, división de binarios por arquitectura (`arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86`) y publicación como artefactos independientes descargables desde GitHub.
 - [x] **Gestión de Cuentas e Identidad Web Integrada (Google One-Tap):** Vinculación nativa de cuentas de Google y credenciales federadas con AndroidX `CredentialManager`, persistencia local en Room (`UserAccountEntity`, `UserAccountDao`), detección contextual de páginas de autenticación en vivo con `WebSignInBridge`, banner superior interactivo en Compose (`WebSignInPromptBanner`), autocompletado e inyección en GeckoView y pantalla dedicada multicuenta (`AccountsScreen`).
 - [x] **Gestor de Permisos por Sitio Web y Políticas de Bloqueo Silencioso ("No Preguntar"):** Control granular de accesos web (cámara, micrófono, geolocalización, notificaciones de escritorio y almacenamiento persistente) persistido en Room v8 (`SitePermissionEntity`, `SitePermissionDao`), interceptación y resolución en `GeckoSession.PermissionDelegate`, diálogos nativos interactivos con opción de recordar, pantalla dedicada (`SitePermissionsScreen`) con búsqueda y filtros, y directivas globales para silenciar solicitudes de permisos sin mostrar popups.
 - [x] **Sistema de Efectos de Sonido Nativos y Procesamiento de Audio:** Integración de `SoundPool` con cero latencia (`SoundEffectManager`) con 6 variantes de tonos de logro reproducidos de forma aleatoria al finalizar descargas exitosamente, retroalimentación háptica coordinada, control on/off en Ajustes, y script multipropósito `tools/audio_processor.sh` para conversión de formatos (WAV, MP3, OGG), recorte sin chasquidos y división automática por detección de silencios.
+- [x] **Soporte Completo de WebExtensions (Mozilla Add-ons) Bajo Demanda:**
+  - Descarga e instalación directa desde servidores oficiales de Mozilla (`addons.mozilla.org`) sin empaquetar binarios de terceros dentro del APK para preservar la privacidad y la licencia cerrada del código base.
+  - Catálogo de extensiones recomendadas: uBlock Origin (bloqueo de publicidad), Dark Reader (modo oscuro universal), TWP (traducción de páginas) y ClearURLs (desinfección de rastreadores en enlaces).
+  - Ciclo de vida completo (`ExtensionManager`): instalación `.xpi`, activación/desactivación dinámica, desinstalación y monitor de progreso de descarga.
+  - Pantalla dedicada de gestión (`ExtensionsScreen`) con tarjetas visuales e instalación desde URLs directas.
+- [x] **Flujo de Bienvenida y Configuración Inicial (Onboarding):** Pantalla inicial dedicada (`OnboardingScreen`) previa al acceso al navegador para elegir el motor de búsqueda predeterminado (DuckDuckGo, Google, Bing, Brave, Ecosia) y seleccionar las extensiones recomendadas para descargar de forma desatendida.
+- [x] **Blindaje y Endurecimiento de Seguridad (Security Hardening):**
+  - Cifrado Fail-Closed para credenciales con fallback en memoria.
+  - Protección estricta contra Path Traversal en descargas (`canonicalPath`).
+  - Restricción estricta de tráfico en texto claro con `network_security_config.xml` (`cleartextTrafficPermitted="false"` en producción).
+  - FileProvider privado y aislado con directorio `share/`.
 
 ---
 
@@ -67,8 +78,7 @@ Este documento traza las fases de desarrollo, hitos completados y objetivos futu
 - [ ] **Expansión Continua de Seguridad en Modo Incógnito:**
   - Incorporación de muchas más funciones de seguridad para que el modo incógnito no sea genérico: bloqueo heurístico de telemetría oculta en scripts, sandbox estricto de APIs de sensores (giroscopio, acelerómetro, batería), y rotación dinámica de identidades virtuales.
   - Generación de informe de rastreo en tiempo real para verificar qué elementos intentaron perfilar al usuario y fueron neutralizados.
-- [ ] **Lógica de Seguridad en Rust (`core-native`):** Integración de filtros de bloqueo de publicidad y listas de rastreo procesadas en el crate Rust.
-- [ ] **Soporte de WebExtensions:** Integración de extensiones de Mozilla (bloqueadores de publicidad como uBlock Origin, gestores de scripts).
+- [ ] **Lógica de Seguridad en Rust (`core-native`):** Integración de filtros de bloqueo de publicidad y listas de rastreo procesadas en el crate Rust como acelerador nativo en sinergia con WebExtensions.
 - [ ] **Lector de Modo Lectura:** Extracción del contenido principal de artículos para lectura limpia sin anuncios ni estilos intrusivos.
 - [ ] **Protección contra Rastreo Mejorada (ETP):** Bloqueo nativo de rastreadores de terceros y cookies de seguimiento mediante GeckoView.
 

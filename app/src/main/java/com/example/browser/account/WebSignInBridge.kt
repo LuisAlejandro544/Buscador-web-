@@ -49,8 +49,9 @@ object WebSignInBridge {
     )
 
     /**
-     * Evalúa si una URL corresponde legítimamente a una página de acceso o autenticación.
-     * Exige estrictamente HTTPS para prevenir robo de identidad en conexiones inseguras.
+     * Evalúa si una URL corresponde legítimamente a una página de acceso o autenticación
+     * de un proveedor de identidad de confianza comprobada.
+     * Exige estrictamente HTTPS y host verificado para prevenir robo de identidad en sitios maliciosos o phishing.
      */
     fun isAuthPage(url: String): Boolean {
         if (url.isBlank() || !url.startsWith("https://", ignoreCase = true)) return false
@@ -60,13 +61,15 @@ object WebSignInBridge {
             val host = uri.host?.lowercase() ?: return false
             val path = uri.path?.lowercase() ?: ""
 
-            // 1. Coincidencia directa con proveedores de identidad reconocidos
-            if (trustedAuthHosts.any { host == it || host.endsWith(".$it") }) {
-                return true
+            // Coincidencia estricta con proveedores de identidad reconocidos para prevenir ataques de phishing
+            val isTrustedHost = trustedAuthHosts.any { host == it || host.endsWith(".$it") }
+            if (!isTrustedHost) {
+                // Denegado: nunca sugerir credenciales en dominios no verificados ni sitios de terceros
+                return false
             }
 
-            // 2. Coincidencia en segmentos de ruta de autenticación explícitos (no en parámetros de búsqueda)
-            authPathSegments.any { path.contains(it) }
+            // En hosts confiables, verificar si la ruta corresponde a login o si es el portal de acceso
+            path.isBlank() || path == "/" || authPathSegments.any { path.contains(it) }
         } catch (_: Exception) {
             false
         }
@@ -100,14 +103,30 @@ object WebSignInBridge {
     /**
      * Genera un script JavaScript sanitizado mediante JSONObject.quote() para evitar
      * inyecciones de código (XSS) y proteger los datos del usuario en formularios web.
+     * Incluye una verificación estricta de origen (HTTPS y host de confianza) dentro del script
+     * para mitigar inyecciones maliciosas si la página sufre redirecciones imprevistas.
      */
     fun generateAutoSignInScript(account: UserAccountEntity): String {
         // Sanitización rigurosa de cadenas mediante JSON estándar
         val quotedEmail = JSONObject.quote(account.email)
+        val trustedHostsJson = JSONObject.quote(trustedAuthHosts.joinToString(","))
 
         return """
             (function() {
                 try {
+                    // Validar protocolo HTTPS y verificar que el host pertenezca a la lista segura
+                    if (window.location.protocol !== 'https:') {
+                        console.warn("Auto-signin denegado: solo permitido en conexiones seguras HTTPS.");
+                        return;
+                    }
+                    const host = window.location.hostname.toLowerCase();
+                    const trusted = $trustedHostsJson.split(',');
+                    const isTrusted = trusted.some(t => host === t || host.endsWith('.' + t));
+                    if (!isTrusted) {
+                        console.warn("Auto-signin bloqueado por seguridad: host no verificado como proveedor legítimo.");
+                        return;
+                    }
+
                     // Buscar campos de usuario/email comunes en formularios web
                     const emailSelectors = [
                         'input[type="email"]',

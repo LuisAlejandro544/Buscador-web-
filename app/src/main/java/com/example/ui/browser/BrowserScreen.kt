@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Cookie
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
@@ -114,7 +115,8 @@ fun BrowserScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToDownloads: () -> Unit,
     onNavigateToCookies: () -> Unit = {},
-    onNavigateToAccounts: () -> Unit = {}
+    onNavigateToAccounts: () -> Unit = {},
+    onNavigateToExtensions: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -338,6 +340,16 @@ fun BrowserScreen(
                                     onNavigateToDownloads()
                                 },
                                 modifier = Modifier.testTag("menu_downloads")
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("Extensiones") },
+                                leadingIcon = { Icon(Icons.Default.Extension, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                onClick = {
+                                    isMenuExpanded = false
+                                    onNavigateToExtensions()
+                                },
+                                modifier = Modifier.testTag("menu_extensions")
                             )
 
                             DropdownMenuItem(

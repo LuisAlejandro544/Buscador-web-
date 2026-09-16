@@ -3,6 +3,7 @@ package com.example.data.security
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -18,6 +19,7 @@ import javax.crypto.spec.GCMParameterSpec
  */
 object KeyStoreCryptoHelper {
 
+    private const val TAG = "KeyStoreCryptoHelper"
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
     private const val KEY_ALIAS = "browser_user_tokens_aes_key"
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
@@ -69,9 +71,10 @@ object KeyStoreCryptoHelper {
             System.arraycopy(cipherBytes, 0, combined, iv.size, cipherBytes.size)
 
             Base64.encodeToString(combined, Base64.NO_WRAP)
-        } catch (_: Exception) {
-            // Si el hardware Keystore no está disponible (ej. en entornos de pruebas sin Keystore), mantener compatibilidad
-            plainText
+        } catch (e: Exception) {
+            // Seguridad Fail-Closed: nunca retornar datos sensibles en texto plano si el cifrado falla
+            Log.e(TAG, "Error crítico durante el cifrado en Android Keystore: ${e.message}", e)
+            null
         }
     }
 
@@ -79,13 +82,13 @@ object KeyStoreCryptoHelper {
      * Descifra una cadena previamente cifrada con [encrypt].
      *
      * @param encryptedText Cadena Base64 con [IV + Texto Cifrado].
-     * @return Texto en claro descifrado o el texto original si no estaba cifrado.
+     * @return Texto en claro descifrado o null si no se pudo descifrar de manera íntegra y segura.
      */
     fun decrypt(encryptedText: String?): String? {
         if (encryptedText.isNullOrEmpty()) return null
         return try {
             val decoded = Base64.decode(encryptedText, Base64.NO_WRAP)
-            if (decoded.size <= GCM_IV_LENGTH) return encryptedText
+            if (decoded.size <= GCM_IV_LENGTH) return null
 
             val iv = ByteArray(GCM_IV_LENGTH)
             val cipherBytes = ByteArray(decoded.size - GCM_IV_LENGTH)
@@ -99,9 +102,10 @@ object KeyStoreCryptoHelper {
 
             val plainBytes = cipher.doFinal(cipherBytes)
             String(plainBytes, Charsets.UTF_8)
-        } catch (_: Exception) {
-            // Retornar el valor tal cual si ya estaba en texto plano o fallo de descifrado
-            encryptedText
+        } catch (e: Exception) {
+            // Seguridad Fail-Closed: si el tag de autenticación GCM o la clave fallan, rechazar los datos
+            Log.e(TAG, "Error crítico durante el descifrado: los datos están corruptos o la clave no coincide: ${e.message}", e)
+            null
         }
     }
 }

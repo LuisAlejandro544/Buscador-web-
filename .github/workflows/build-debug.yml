@@ -2,11 +2,11 @@ name: Build Debug APK
 
 # ==============================================================================
 # Flujo de Integración Continua (CI) en GitHub Actions
-# Propósito: Compilar el APK de depuración (Debug) desde cero, sin caché,
+# Propósito: Compilar los APKs de depuración (Debug) divididos por arquitectura
+#            (ABI Splits: arm64-v8a, armeabi-v7a, x86_64, x86) desde cero, sin caché,
 #            descargando dependencias de C++ (NDK 28 / CMake 3.31), Rust 2024
 #            y GeckoView Omni de Mozilla, generando firma debug.keystore limpia
-#            y transfiriendo el APK compilado directamente al teléfono móvil
-#            (carpeta /storage/emulated/0/Navegador) a través de Syncthing P2P.
+#            y publicando los APKs livianos como artefactos separados en GitHub.
 # ==============================================================================
 
 on:
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build-debug-apk:
-    name: Compilar APK Debug y Enviar al Teléfono
+    name: Compilar APKs Debug por Arquitectura
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -114,50 +114,55 @@ jobs:
             --no-daemon \
             --stacktrace
 
-      # 10. Validar y verificar el APK generado
-      - name: Verificar APK generado
+      # 10. Validar y verificar los APKs generados por arquitectura
+      - name: Verificar APKs generados por arquitectura
         run: |
-          APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
-          if [ -f "$APK_PATH" ]; then
-            APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
-            echo "============================================================"
-            echo "✅ ¡APK Debug compilado exitosamente!"
-            echo "📁 Ubicación: $APK_PATH"
-            echo "⚖️  Tamaño: $APK_SIZE"
-            echo "============================================================"
-          else
-            echo "❌ Error: No se encontró el archivo $APK_PATH tras la compilación."
-            exit 1
-          fi
-
-      # 11. Sincronización P2P directa al teléfono mediante Syncthing
-      - name: Sincronizar APK directamente al teléfono con Syncthing
-        timeout-minutes: 25
-        env:
-          PHONE_SYNCTHING_ID: ${{ secrets.PHONE_SYNCTHING_ID }}
-          SYNCTHING_KEY_PEM: ${{ secrets.SYNCTHING_KEY_PEM }}
-          SYNCTHING_CERT_PEM: ${{ secrets.SYNCTHING_CERT_PEM }}
-          APK_SRC: app/build/outputs/apk/debug/app-debug.apk
-        run: |
-          if [ -z "$PHONE_SYNCTHING_ID" ]; then
-            echo "ℹ️ Secreto PHONE_SYNCTHING_ID no configurado en GitHub Secrets."
-            echo "ℹ️ Saltando sincronización P2P directa. El APK estará en los Artefactos de GitHub."
-            exit 0
-          fi
-
           echo "============================================================"
-          echo "📦 Instalando Syncthing en el runner de GitHub Actions..."
+          echo "Verificando APKs generados con ABI Splits..."
           echo "============================================================"
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq syncthing
+          ls -lh app/build/outputs/apk/debug/
+          
+          # Verificar presencia de cada arquitectura clave
+          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+            APK_FILE="app/build/outputs/apk/debug/app-${abi}-debug.apk"
+            if [ -f "$APK_FILE" ]; then
+              SIZE=$(du -h "$APK_FILE" | cut -f1)
+              echo "✅ APK [${abi}]: $APK_FILE ($SIZE)"
+            else
+              echo "❌ Error: No se encontró el binario para $abi en $APK_FILE"
+              exit 1
+            fi
+          done
 
-          PYTHONUNBUFFERED=1 python3 -u .github/scripts/syncthing_transfer.py
-
-      # 12. Subir el APK Debug como artefacto descargable en GitHub (Respaldo)
-      - name: Subir APK Debug como Artefacto (Respaldo)
+      # 11. Subir APKs divididos a artefactos separados en GitHub Actions
+      - name: Subir APK ARM64 (64-bit Móvil - Recomendado)
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: app-debug-arm64-v8a
+          path: app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Subir APK ARMv7 (32-bit Móvil)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-armeabi-v7a
+          path: app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Subir APK x86_64 (Emuladores / PCs 64-bit)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-x86_64
+          path: app/build/outputs/apk/debug/app-x86_64-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Subir APK x86 (Emuladores 32-bit)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-x86
+          path: app/build/outputs/apk/debug/app-x86-debug.apk
           if-no-files-found: error
           retention-days: 7

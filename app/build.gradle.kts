@@ -24,11 +24,7 @@ android {
     versionCode = 1
     versionName = "1.0"
 
-    ndk {
-      abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
-    }
-
-    // Configuración para arquitecturas de 32 y 64 bits
+    // Configuración para arquitecturas de 32 y 64 bits mediante splits.abi
     // Nota: externalNativeBuild de CMake se desactiva en el entorno de desarrollo
     // NativeBridge.kt cuenta con fallback seguro en Kotlin.
 
@@ -72,6 +68,14 @@ android {
   packaging {
     jniLibs {
       useLegacyPackaging = true
+    }
+  }
+  splits {
+    abi {
+      isEnable = true
+      reset()
+      include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+      isUniversalApk = false
     }
   }
   dependenciesInfo {

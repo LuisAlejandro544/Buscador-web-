@@ -91,11 +91,8 @@ class GeckoSessionManager(private val context: Context) {
                 .useTrackingProtection(isDoNotTrackEnabled || isIncognito)
                 .allowJavascript(isJavaScriptEnabled)
 
-            // En modo incógnito, enmascarar User-Agent con un perfil Tor/ESR anónimo genérico
-            // para neutralizar el rastreo y huella digital del modelo de teléfono exacto
-            if (isIncognito) {
-                builder.userAgentOverride("Mozilla/5.0 (Android 10; Mobile; rv:115.0) Gecko/115.0 Firefox/115.0")
-            }
+            // Dejar que GeckoView envíe su User-Agent nativo sincronizado con el motor
+            // para evitar banderas de discrepancia en sistemas de protección contra bots
 
             // Si es una pestaña protegida, asignamos un contexto aislado de identidad
             if (isProtected) {
