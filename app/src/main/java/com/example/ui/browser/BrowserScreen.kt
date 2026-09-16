@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -82,6 +83,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.browser.engine.GeckoViewEngine
+import com.example.ui.components.WebPromptDialog
 import com.example.viewmodel.BrowserViewModel
 import org.mozilla.geckoview.GeckoView
 
@@ -109,13 +111,23 @@ fun BrowserScreen(
     val bookmarks by viewModel.bookmarks.collectAsState()
     val recentHistory by viewModel.recentHistory.collectAsState()
     val isIncognito by viewModel.isIncognitoMode.collectAsState()
+    val isProtected by viewModel.isProtectedMode.collectAsState()
     val normalTabs by viewModel.normalTabs.collectAsState()
+    val protectedTabs by viewModel.protectedTabs.collectAsState()
     val incognitoTabs by viewModel.incognitoTabs.collectAsState()
     val isBookmarked by viewModel.isCurrentPageBookmarked.collectAsState()
     val activeTabId by viewModel.activeTabId.collectAsState()
+    val activeTab by viewModel.activeTab.collectAsState()
     val isDesktopDefault by viewModel.isDesktopModeDefault.collectAsState()
+    val activeWebPrompt by viewModel.activeWebPrompt.collectAsState()
 
-    val currentTabsCount = if (isIncognito) incognitoTabs.size else normalTabs.size
+    val currentTabsCount = when {
+        isProtected -> protectedTabs.size
+        isIncognito -> incognitoTabs.size
+        else -> normalTabs.size
+    }
+
+    val emeraldColor = Color(0xFF00897B)
 
     var isMenuExpanded by remember { mutableStateOf(false) }
     var isInputFocused by remember { mutableStateOf(false) }
@@ -131,11 +143,13 @@ fun BrowserScreen(
     }
 
     // Registrar el motor GeckoView en el ViewModel según la pestaña activa
-    DisposableEffect(activeTabId, isIncognito) {
+    DisposableEffect(activeTabId, isIncognito, isProtected) {
         val tabId = activeTabId ?: 1L
         val session = viewModel.sessionManager.getOrCreateSession(
             tabId = tabId,
             isIncognito = isIncognito,
+            isProtected = isProtected,
+            contextId = activeTab?.contextId,
             isDesktopMode = pageState.isDesktopMode || isDesktopDefault
         )
         val engine = GeckoViewEngine(context, geckoView, viewModel, session)
@@ -162,6 +176,7 @@ fun BrowserScreen(
                             value = omniboxText,
                             isFocused = isInputFocused,
                             isSecure = pageState.isSecure,
+                            isProtected = isProtected,
                             isHome = isHome,
                             onValueChange = { viewModel.onOmniboxTextChange(it) },
                             onFocusChange = { isInputFocused = it },
@@ -198,8 +213,11 @@ fun BrowserScreen(
                             BadgedBox(
                                 badge = {
                                     Badge(
-                                        containerColor = if (isIncognito) MaterialTheme.colorScheme.tertiary
-                                                        else MaterialTheme.colorScheme.primary
+                                        containerColor = when {
+                                            isProtected -> emeraldColor
+                                            isIncognito -> MaterialTheme.colorScheme.tertiary
+                                            else -> MaterialTheme.colorScheme.primary
+                                        }
                                     ) {
                                         Text(text = "$currentTabsCount", fontSize = 10.sp)
                                     }
@@ -227,9 +245,19 @@ fun BrowserScreen(
                                 leadingIcon = { Icon(Icons.Default.Tab, contentDescription = null) },
                                 onClick = {
                                     isMenuExpanded = false
-                                    viewModel.createNewTab("about:home", isIncognito = false)
+                                    viewModel.createNewTab("about:home", isIncognito = false, isProtected = false)
                                 },
                                 modifier = Modifier.testTag("menu_new_tab")
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("Nueva pestaña protegida") },
+                                leadingIcon = { Icon(Icons.Default.Shield, contentDescription = null, tint = emeraldColor) },
+                                onClick = {
+                                    isMenuExpanded = false
+                                    viewModel.createProtectedTab("about:home")
+                                },
+                                modifier = Modifier.testTag("menu_new_protected_tab")
                             )
 
                             DropdownMenuItem(
@@ -435,8 +463,11 @@ fun BrowserScreen(
                         BadgedBox(
                             badge = {
                                 Badge(
-                                    containerColor = if (isIncognito) MaterialTheme.colorScheme.tertiary
-                                                    else MaterialTheme.colorScheme.primary
+                                    containerColor = when {
+                                        isProtected -> emeraldColor
+                                        isIncognito -> MaterialTheme.colorScheme.tertiary
+                                        else -> MaterialTheme.colorScheme.primary
+                                    }
                                 ) {
                                     Text(text = "$currentTabsCount", fontSize = 10.sp)
                                 }
@@ -461,6 +492,7 @@ fun BrowserScreen(
                     bookmarks = bookmarks,
                     recentHistory = recentHistory,
                     isIncognito = isIncognito,
+                    isProtected = isProtected,
                     onNavigateToUrl = { url ->
                         viewModel.loadInput(url)
                     }
@@ -475,6 +507,12 @@ fun BrowserScreen(
                 )
             }
         }
+
+        // Diálogos web interactivos (Alerts, Prompts, Confirms, HTTP Auth, Selector de archivos)
+        WebPromptDialog(
+            promptRequest = activeWebPrompt,
+            onDismissRequest = { viewModel.dismissWebPrompt() }
+        )
     }
 }
 
@@ -486,6 +524,7 @@ private fun OmniboxField(
     value: String,
     isFocused: Boolean,
     isSecure: Boolean,
+    isProtected: Boolean = false,
     isHome: Boolean,
     onValueChange: (String) -> Unit,
     onFocusChange: (Boolean) -> Unit,
@@ -509,7 +548,14 @@ private fun OmniboxField(
             )
         },
         leadingIcon = {
-            if (isSecure && !isHome) {
+            if (isProtected) {
+                Icon(
+                    imageVector = Icons.Default.Shield,
+                    contentDescription = "Pestaña Protegida (Aislamiento de cookies)",
+                    tint = Color(0xFF00897B),
+                    modifier = Modifier.size(16.dp)
+                )
+            } else if (isSecure && !isHome) {
                 Icon(
                     imageVector = Icons.Default.Lock,
                     contentDescription = "Conexión segura HTTPS",

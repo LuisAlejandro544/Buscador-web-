@@ -86,10 +86,12 @@ fun BrowserStartPage(
     bookmarks: List<BookmarkEntity>,
     recentHistory: List<HistoryEntity>,
     isIncognito: Boolean,
+    isProtected: Boolean = false,
     onNavigateToUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var query by remember { mutableStateOf("") }
+    val emeraldColor = Color(0xFF00897B)
 
     val defaultQuickLinks = remember {
         listOf(
@@ -142,7 +144,11 @@ fun BrowserStartPage(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    text = if (isIncognito) "Navegación Privada" else "Navegador Web",
+                    text = when {
+                        isProtected -> "Pestaña Protegida"
+                        isIncognito -> "Navegación Privada"
+                        else -> "Navegador Web"
+                    },
                     style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onBackground
                 )
@@ -152,8 +158,11 @@ fun BrowserStartPage(
                 // Indicador de seguridad
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = if (isIncognito) MaterialTheme.colorScheme.tertiaryContainer 
-                            else MaterialTheme.colorScheme.secondaryContainer,
+                    color = when {
+                        isProtected -> emeraldColor.copy(alpha = 0.15f)
+                        isIncognito -> MaterialTheme.colorScheme.tertiaryContainer 
+                        else -> MaterialTheme.colorScheme.secondaryContainer
+                    },
                     modifier = Modifier.padding(top = 4.dp)
                 ) {
                     Row(
@@ -161,19 +170,32 @@ fun BrowserStartPage(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = if (isIncognito) Icons.Default.Security else Icons.Default.Lock,
+                            imageVector = when {
+                                isProtected -> Icons.Default.Security
+                                isIncognito -> Icons.Default.Security
+                                else -> Icons.Default.Lock
+                            },
                             contentDescription = null,
                             modifier = Modifier.size(14.dp),
-                            tint = if (isIncognito) MaterialTheme.colorScheme.onTertiaryContainer
-                                   else MaterialTheme.colorScheme.onSecondaryContainer
+                            tint = when {
+                                isProtected -> emeraldColor
+                                isIncognito -> MaterialTheme.colorScheme.onTertiaryContainer
+                                else -> MaterialTheme.colorScheme.onSecondaryContainer
+                            }
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (isIncognito) "Modo incógnito activo: Sin registro de historial"
-                                   else "Motor activo: WebView (Base modular para GeckoView)",
+                            text = when {
+                                isProtected -> "Burbuja aislada: Cookies y sesiones sin tocar tu perfil principal"
+                                isIncognito -> "Modo incógnito activo: Sin registro de cookies ni historial"
+                                else -> "Motor Mozilla GeckoView Omni: Renderizado nativo independiente"
+                            },
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (isIncognito) MaterialTheme.colorScheme.onTertiaryContainer
-                                    else MaterialTheme.colorScheme.onSecondaryContainer
+                            color = when {
+                                isProtected -> emeraldColor
+                                isIncognito -> MaterialTheme.colorScheme.onTertiaryContainer
+                                else -> MaterialTheme.colorScheme.onSecondaryContainer
+                            }
                         )
                     }
                 }

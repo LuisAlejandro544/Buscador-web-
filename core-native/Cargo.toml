@@ -1,0 +1,21 @@
+[package]
+name = "core-native"
+version = "0.1.0"
+edition = "2024"
+authors = ["Browser Project Team"]
+description = "Módulo nativo de alto rendimiento en Rust para seguridad, hashing y filtrado web"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "core_native"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+# Sin dependencias externas pesadas que requieran compilación de macros de host
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

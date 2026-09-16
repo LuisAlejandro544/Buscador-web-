@@ -1,6 +1,7 @@
 package com.example.ui.tabs
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -54,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,8 +67,8 @@ import com.example.viewmodel.BrowserViewModel
 
 /**
  * Pantalla de gestión de pestañas del navegador.
- * Muestra las pestañas activas en cuadrícula, permitiendo cambiar entre ellas,
- * cerrarlas individualmente, cerrar todas o crear nuevas pestañas normales o de incógnito.
+ * Permite alternar entre pestañas Normales, Protegidas (contenedores aislados) e Incógnito,
+ * cerrarlas individualmente, cerrar todas o abrir nuevas pestañas con aislamiento de cookies.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,24 +77,49 @@ fun TabsScreen(
     onNavigateBack: () -> Unit
 ) {
     val normalTabs by viewModel.normalTabs.collectAsState()
+    val protectedTabs by viewModel.protectedTabs.collectAsState()
     val incognitoTabs by viewModel.incognitoTabs.collectAsState()
     val activeTabId by viewModel.activeTabId.collectAsState()
     val isIncognito by viewModel.isIncognitoMode.collectAsState()
+    val isProtected by viewModel.isProtectedMode.collectAsState()
 
-    var selectedTabIndex by remember(isIncognito) {
-        mutableIntStateOf(if (isIncognito) 1 else 0)
+    // 0: Normales, 1: Protegidas, 2: Privadas
+    var selectedTabIndex by remember(isIncognito, isProtected) {
+        mutableIntStateOf(
+            when {
+                isProtected -> 1
+                isIncognito -> 2
+                else -> 0
+            }
+        )
     }
 
     var showCloseAllDialog by remember { mutableStateOf(false) }
 
-    val currentDisplayTabs = if (selectedTabIndex == 1) incognitoTabs else normalTabs
+    val currentDisplayTabs = when (selectedTabIndex) {
+        1 -> protectedTabs
+        2 -> incognitoTabs
+        else -> normalTabs
+    }
+
+    val currentTabMode = when (selectedTabIndex) {
+        1 -> BrowserViewModel.TabMode.PROTECTED
+        2 -> BrowserViewModel.TabMode.INCOGNITO
+        else -> BrowserViewModel.TabMode.NORMAL
+    }
+
+    val emeraldColor = Color(0xFF00897B)
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        text = "Pestañas (${currentDisplayTabs.size})",
+                        text = when (selectedTabIndex) {
+                            1 -> "Pestañas Protegidas (${currentDisplayTabs.size})"
+                            2 -> "Pestañas Privadas (${currentDisplayTabs.size})"
+                            else -> "Pestañas (${currentDisplayTabs.size})"
+                        },
                         fontWeight = FontWeight.Bold
                     )
                 },
@@ -115,15 +143,27 @@ fun TabsScreen(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    val isIncog = selectedTabIndex == 1
-                    viewModel.createNewTab("about:home", isIncognito = isIncog)
+                    when (selectedTabIndex) {
+                        1 -> viewModel.createProtectedTab("about:home")
+                        2 -> viewModel.createNewTab("about:home", isIncognito = true, isProtected = false)
+                        else -> viewModel.createNewTab("about:home", isIncognito = false, isProtected = false)
+                    }
                     onNavigateBack()
                 },
                 modifier = Modifier.testTag("new_tab_fab"),
-                containerColor = if (selectedTabIndex == 1) MaterialTheme.colorScheme.tertiary
-                                 else MaterialTheme.colorScheme.primary
+                containerColor = when (selectedTabIndex) {
+                    1 -> emeraldColor
+                    2 -> MaterialTheme.colorScheme.tertiary
+                    else -> MaterialTheme.colorScheme.primary
+                }
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Nueva pestaña")
+                Icon(
+                    imageVector = when (selectedTabIndex) {
+                        1 -> Icons.Default.Shield
+                        else -> Icons.Default.Add
+                    },
+                    contentDescription = "Nueva pestaña"
+                )
             }
         }
     ) { innerPadding ->
@@ -132,7 +172,7 @@ fun TabsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Selector de Modo Normal vs Incógnito
+            // Selector de tres modos: Normales, Protegidas y Privadas
             PrimaryTabRow(
                 selectedTabIndex = selectedTabIndex,
                 modifier = Modifier.fillMaxWidth()
@@ -146,8 +186,8 @@ fun TabsScreen(
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Normales (${normalTabs.size})")
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Normal (${normalTabs.size})")
                         }
                     },
                     modifier = Modifier.testTag("tab_mode_normal")
@@ -157,17 +197,69 @@ fun TabsScreen(
                     selected = selectedTabIndex == 1,
                     onClick = {
                         selectedTabIndex = 1
+                        viewModel.switchToProtectedMode()
+                    },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Shield, contentDescription = null, tint = emeraldColor, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Protegidas (${protectedTabs.size})", color = if (selectedTabIndex == 1) emeraldColor else Color.Unspecified)
+                        }
+                    },
+                    modifier = Modifier.testTag("tab_mode_protected")
+                )
+
+                Tab(
+                    selected = selectedTabIndex == 2,
+                    onClick = {
+                        selectedTabIndex = 2
                         viewModel.toggleIncognitoMode(true)
                     },
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text("Privadas (${incognitoTabs.size})")
                         }
                     },
                     modifier = Modifier.testTag("tab_mode_incognito")
                 )
+            }
+
+            // Banner explicativo para Modo Protegido
+            if (selectedTabIndex == 1) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = emeraldColor.copy(alpha = 0.12f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = emeraldColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Aislamiento Total de Cookies y Sesión",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = emeraldColor
+                            )
+                            Text(
+                                text = "Las cookies y cuentas de esta pestaña no tocan tus pestañas normales ni otras cuentas.",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             }
 
             if (currentDisplayTabs.isEmpty()) {
@@ -180,20 +272,36 @@ fun TabsScreen(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
-                            imageVector = if (selectedTabIndex == 1) Icons.Default.Security else Icons.Default.Public,
+                            imageVector = when (selectedTabIndex) {
+                                1 -> Icons.Default.Shield
+                                2 -> Icons.Default.Lock
+                                else -> Icons.Default.Public
+                            },
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                            tint = when (selectedTabIndex) {
+                                1 -> emeraldColor
+                                2 -> MaterialTheme.colorScheme.tertiary
+                                else -> MaterialTheme.colorScheme.primary
+                            }.copy(alpha = 0.5f),
                             modifier = Modifier.size(64.dp)
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = if (selectedTabIndex == 1) "No hay pestañas privadas abiertas" else "No hay pestañas abiertas",
+                            text = when (selectedTabIndex) {
+                                1 -> "No hay pestañas protegidas abiertas"
+                                2 -> "No hay pestañas privadas abiertas"
+                                else -> "No hay pestañas abiertas"
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Medium
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Presiona el botón + para abrir una nueva pestaña",
+                            text = when (selectedTabIndex) {
+                                1 -> "Abre una pestaña protegida para aislar cookies de sitios web sospechosos o iniciar una sesión secundaria"
+                                2 -> "Abre una pestaña de incógnito para no registrar historial"
+                                else -> "Presiona el botón + para abrir una nueva pestaña"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -206,7 +314,7 @@ fun TabsScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 12.dp),
-                    contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -233,12 +341,20 @@ fun TabsScreen(
         AlertDialog(
             onDismissRequest = { showCloseAllDialog = false },
             title = { Text("Cerrar todas las pestañas") },
-            text = { Text("¿Deseas cerrar todas las pestañas de este modo?") },
+            text = {
+                Text(
+                    when (selectedTabIndex) {
+                        1 -> "¿Deseas cerrar todas las pestañas protegidas y purgar sus datos aislados?"
+                        2 -> "¿Deseas cerrar todas las pestañas privadas?"
+                        else -> "¿Deseas cerrar todas las pestañas normales?"
+                    }
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showCloseAllDialog = false
-                        viewModel.closeAllTabs(selectedTabIndex == 1)
+                        viewModel.closeAllTabs(currentTabMode)
                         onNavigateBack()
                     }
                 ) {
@@ -255,7 +371,7 @@ fun TabsScreen(
 }
 
 /**
- * Tarjeta individual que muestra una pestaña en la cuadrícula.
+ * Tarjeta individual que muestra una pestaña en la cuadrícula con soporte para pestañas protegidas.
  */
 @Composable
 private fun TabCardItem(
@@ -264,14 +380,24 @@ private fun TabCardItem(
     onClick: () -> Unit,
     onClose: () -> Unit
 ) {
-    val borderColor = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-    val containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
-                         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+    val emeraldColor = Color(0xFF00897B)
+    val borderColor = when {
+        isActive && tab.isProtected -> emeraldColor
+        isActive -> MaterialTheme.colorScheme.primary
+        tab.isProtected -> emeraldColor.copy(alpha = 0.5f)
+        else -> MaterialTheme.colorScheme.outlineVariant
+    }
+    val containerColor = when {
+        isActive && tab.isProtected -> emeraldColor.copy(alpha = 0.15f)
+        isActive -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+        tab.isProtected -> emeraldColor.copy(alpha = 0.07f)
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+    }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(170.dp)
+            .height(180.dp)
             .clickable { onClick() }
             .testTag("tab_card_${tab.id}"),
         shape = RoundedCornerShape(16.dp),
@@ -289,14 +415,24 @@ private fun TabCardItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = if (tab.isIncognito) Icons.Default.Lock else Icons.Default.Language,
+                    imageVector = when {
+                        tab.isProtected -> Icons.Default.Shield
+                        tab.isIncognito -> Icons.Default.Lock
+                        else -> Icons.Default.Language
+                    },
                     contentDescription = null,
                     modifier = Modifier.size(16.dp),
-                    tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = when {
+                        tab.isProtected -> emeraldColor
+                        isActive -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = if (tab.url == "about:home") "Inicio" else tab.title,
+                    text = if (tab.url == "about:home") {
+                        if (tab.isProtected) "Protegida" else "Inicio"
+                    } else tab.title,
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -316,7 +452,7 @@ private fun TabCardItem(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Vista previa simulada de la página
             Surface(
@@ -332,13 +468,23 @@ private fun TabCardItem(
                         .padding(8.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (tab.url == "about:home") "Página de Inicio" else tab.url,
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (tab.isProtected) {
+                            Text(
+                                text = "🛡️ Contenedor Aislado",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                color = emeraldColor
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                        }
+                        Text(
+                            text = if (tab.url == "about:home") "Página de Inicio" else tab.url,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
 
@@ -354,14 +500,14 @@ private fun TabCardItem(
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
                         contentDescription = "Pestaña activa",
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = if (tab.isProtected) emeraldColor else MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = "Activa",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = if (tab.isProtected) emeraldColor else MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
                     )
                 }

@@ -138,15 +138,10 @@ class GeckoViewEngine(
 
             override fun onExternalResponse(s: GeckoSession, response: WebResponse) {
                 val downloadUrl = response.uri
-                try {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    context.startActivity(intent)
-                    Toast.makeText(context, "Iniciando descarga...", Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Toast.makeText(context, "No se pudo abrir gestor para descarga", Toast.LENGTH_SHORT).show()
-                }
+                val contentDisposition = response.headers["Content-Disposition"]
+                val mimeType = response.headers["Content-Type"]
+                val contentLength = response.headers["Content-Length"]?.toLongOrNull() ?: 0L
+                viewModel.initiateDownload(downloadUrl, contentDisposition, mimeType, contentLength)
             }
 
             override fun onCrash(s: GeckoSession) {
@@ -158,6 +153,9 @@ class GeckoViewEngine(
                 s.reload()
             }
         }
+
+        // 4. Delegado de Diálogos Web: Alertas JS, confirmaciones, prompts y selector de archivos
+        session.promptDelegate = GeckoPromptHandler(context, viewModel)
     }
 
     override fun loadUrl(url: String) {

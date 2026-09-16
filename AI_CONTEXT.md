@@ -39,5 +39,40 @@ Este archivo proporciona el contexto fundamental del proyecto para cualquier mod
 
 - **Explicación del Código:** Cada archivo nuevo o modificado debe contener comentarios explicativos en español que detallen el propósito de la clase, funciones y lógica principal para facilitar la comprensión.
 - **Desarrollo Modular:** Evitar crear archivos de más de 500 líneas. Proactivamente dividir la lógica en componentes y casos de uso reutilizables.
-- **Persistencia Reactiva:** Toda la información local (pestañas, historial, favoritos) se gestiona mediante Room Database con `StateFlow` y corrutinas de Kotlin.
+- **Persistencia Reactiva:** Toda la información local (pestañas, historial, favoritos, descargas) se gestiona mediante Room Database con `StateFlow` y corrutinas de Kotlin.
 - **Manejo de Idioma:** Las cadenas visibles al usuario se declaran en `res/values/strings.xml`. Documentación e información de commits se redactan en español.
+
+---
+
+## ⚡ Módulos y Capacidades del Motor GeckoView
+
+1. **Sincronización Dinámica de Ajustes:**
+   - La configuración de `isJavaScriptEnabled`, `isDoNotTrackEnabled` y modo escritorio se sincroniza de forma reactiva desde `BrowserPreferences` / `BrowserViewModel` hacia `GeckoSessionManager` y los objetos `GeckoSessionSettings` de cada pestaña activa y futura en tiempo real.
+
+2. **Gestor de Descargas Avanzado:**
+   - GeckoView intercepta URLs con cabeceras `Content-Disposition: attachment` o tipos MIME no renderizables mediante `GeckoSession.ContentDelegate.onExternalResponse(session, response)`.
+   - `DownloadManagerHelper` normaliza el nombre de archivo, asigna carpetas seguras (`Environment.DIRECTORY_DOWNLOADS`) y encola en `android.app.DownloadManager`.
+   - Los registros de descargas se persisten en Room (`DownloadEntity`, `DownloadDao`) y se gestionan desde `DownloadsScreen.kt`.
+
+3. **Gestión de Diálogos Web Nativos:**
+   - GeckoView no dibuja diálogos por defecto: requiere un `PromptDelegate`.
+   - `GeckoPromptHandler` captura solicitudes web asíncronas (`ALERT`, `CONFIRM`, `PROMPT`, `AUTH`, `FILE_CHOOSER`) y emite objetos `WebPromptRequest` al `BrowserViewModel`.
+   - `WebPromptDialog.kt` renderiza componentes nativos de Jetpack Compose acordes a Material 3 y devuelve la resolución `PromptResult` a GeckoView.
+
+4. **Subsistema Nativo (C++26 CMake + Rust 2024 Cargo):**
+   - **C++ (CMake):** Configurado en `app/src/main/cpp/CMakeLists.txt` con NDK r28 y estándares C++26 / C23. Compila la librería compartida JNI `libbrowser_native.so` para `arm64-v8a`, `armeabi-v7a`, `x86` y `x86_64`.
+   - **Rust (Cargo):** Módulo `core-native/` con `Cargo.toml` (Rust Edition 2024, staticlib/cdylib) y `src/lib.rs` para validaciones a bajo nivel y hashing de URLs.
+   - **Puente Kotlin:** `NativeBridge.kt` gestiona la carga dinámica mediante `System.loadLibrary("browser_native")` con control de excepciones y fallback seguro para pruebas JVM.
+
+5. **Pestañas Protegidas (Aislamiento de Sesión por Contenedor Contextual):**
+   - **Aislamiento Multi-Account Container:** Utiliza `GeckoSessionSettings.Builder.contextId(String)` asignando un UUID único por pestaña protegida. Las cookies, caché, `localStorage` e inicios de sesión quedan confinados exclusivamente a esa pestaña.
+   - **Sin Afectación a Cuentas:** Aceptar cookies o autenticarse en una pestaña protegida no interfiere con las pestañas normales ni con el perfil del usuario.
+   - **Destrucción y Purga Automática:** Al cerrarse la pestaña, `GeckoSessionManager` invoca `runtime.storageController.clearDataForSessionContext(contextId)` purgando todos los datos del contenedor de forma irreversible.
+   - **Persistencia en Room v3:** Almacenado con `isProtected = true` y `contextId` persistido para reconexión de sesión durante la navegación.
+   - **Diseño UI:** Distintivo en color esmeralda (`#00897B`), icono de escudo (`Icons.Default.Shield`), pestaña dedicada en `TabsScreen` y página de inicio `BrowserStartPage` adaptada.
+
+6. **Integración Continua y Firma Automática en GitHub Actions:**
+   - **Workflow (`.github/workflows/build-debug.yml`):** Compilación limpia sin caché (`cache-disabled: true`, `--no-build-cache`), descarga de NDK 28, CMake 3.31+, Rust 2024 y GeckoView Omni de Mozilla.
+   - **Script de Firma (`generate_debug_keystore.sh`):** Fuerza la generación no interactiva de un archivo `debug.keystore` (PKCS12, RSA 2048 bits) desde cero en el entorno de CI para firmar el APK de depuración sin requerir interacción ni secretos preexistentes.
+   - **Artefacto:** Genera y publica `app-debug.apk` como artefacto descargable de 30 días de retención.
+

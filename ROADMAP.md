@@ -27,22 +27,25 @@ Este documento traza las fases de desarrollo, hitos completados y objetivos futu
 
 ---
 
-### 🟡 Fase 2: Cableado del Motor GeckoView y Subsistema Nativo (En Progreso)
+### 🟡 Fase 2: Cableado del Motor GeckoView y Subsistema Nativo (Completada)
 - [x] Incorporación del repositorio oficial Maven de Mozilla (`https://maven.mozilla.org/maven2/`).
 - [x] Integración de la dependencia `org.mozilla.geckoview:geckoview-omni` en `libs.versions.toml` y `app/build.gradle.kts`.
 - [x] Configuración de empaquetado nativo JNI (`useLegacyPackaging = true`) para librerías binarias nativas C++ de Gecko en arquitecturas `arm64-v8a`, `armeabi-v7a`, `x86` y `x86_64`.
 - [x] Establecimiento de base de compilación nativa en `libs.versions.toml` y Gradle: NDK 28 LTS (`28.2.13676358`), CMake 3.31.6, flags C++26 (`-std=c++26 -O3`), C23 (`-std=c23 -O3`) y Rust Edition 2024 / 1.89.0.
-- [ ] Implementación de `GeckoViewEngine` implementando `BrowserEngineContract`.
-- [ ] Configuración del singleton `GeckoRuntime` con banderas de optimización de memoria para dispositivos móviles.
-- [ ] Implementación de `GeckoSession` por pestaña con delegados de navegación, progreso y seguridad.
-- [ ] Módulo nativo Rust/C++ (`core-native`): Procesamiento de filtros de red, hashing de URLs y seguridad anti-rastreo a bajo nivel.
-- [ ] Alternador en ajustes para seleccionar motor de renderizado activo (GeckoView / WebView).
+- [x] Implementación de `GeckoViewEngine` implementando `BrowserEngineContract`.
+- [x] Configuración del singleton `GeckoRuntimeProvider` con ETP Estricto y optimizaciones de memoria para dispositivos móviles.
+- [x] Implementación de `GeckoSession` por pestaña en `GeckoSessionManager` con delegados de navegación, progreso, seguridad y recuperación ante caídas.
+- [x] **Sincronización Dinámica de Ajustes:** Conexión en tiempo real entre DataStore/ViewModel y GeckoView para alternar al instante JavaScript, Do Not Track (DNT) y Modo Escritorio por pestaña.
+- [x] **Gestor de Descargas Avanzado:** Intercepción de respuestas no renderizables con `WebResponse`, encolamiento en el `DownloadManager` de Android, persistencia en Room (`DownloadEntity`/`DownloadDao`) y pantalla dedicada con acciones de apertura y búsqueda.
+- [x] **Gestión de Diálogos Web:** Intercepción de llamadas nativas de scripts mediante `GeckoPromptHandler` (`PromptDelegate`), soportando alertas JS, confirmaciones, solicitud de texto, autenticación HTTP y selector de archivos `<input type="file">` presentados en Jetpack Compose con `WebPromptDialog`.
+- [x] **Pestañas Protegidas (Contenedores Aislados de Sesión):** Aislamiento estricto de sesiones y cookies por pestaña mediante `GeckoSessionSettings.Builder.contextId()`, persistencia con esquema Room v3 (`isProtected`, `contextId`), selector tripartito en `TabsScreen` y purga automática de cookies al cerrarse con `runtime.storageController.clearDataForSessionContext(contextId)`.
+- [x] **Infraestructura Nativa Rust/C++ (Scaffolding):** Configuración de CMake 3.31.6 (`app/src/main/cpp/CMakeLists.txt`), compilación de `libbrowser_native.so` con C++26, módulo base en Rust Edition 2024 (`core-native/Cargo.toml`, `src/lib.rs`), puente JNI en Kotlin (`NativeBridge.kt`) y soporte garantizado para 32 y 64 bits (`arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`).
 
 ---
 
-### 🔵 Fase 3: Capacidades Avanzadas de Navegación y Privacidad (Siguiente)
+### 🔵 Fase 3: Capacidades Avanzadas de Navegación, Privacidad y Lógica Rust (Siguiente)
+- [ ] **Lógica de Seguridad en Rust (`core-native`):** Integración de filtros de bloqueo de publicidad y listas de rastreo procesadas en el crate Rust.
 - [ ] **Soporte de WebExtensions:** Integración de extensiones de Mozilla (bloqueadores de publicidad como uBlock Origin, gestores de scripts).
-- [ ] **Gestor de Descargas Nativo:** Panel de control para descargas en segundo plano con soporte para pausar, reanudar y visualización de progreso.
 - [ ] **Lector de Modo Lectura:** Extracción del contenido principal de artículos para lectura limpia sin anuncios ni estilos intrusivos.
 - [ ] **Protección contra Rastreo Mejorada (ETP):** Bloqueo nativo de rastreadores de terceros y cookies de seguimiento mediante GeckoView.
 

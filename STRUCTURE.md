@@ -16,46 +16,70 @@ Este documento describe la organización de módulos, paquetes, flujo de datos y
 ## 📁 Árbol de Paquetes y Archivos Clave
 
 ```text
-app/src/main/java/com/example/
+app/src/main/
+├── cpp/
+│   ├── CMakeLists.txt               # Configuración de compilación CMake 3.31 para C++26 / C23 y enlace con NDK
+│   └── native-bridge.cpp            # Puente JNI y funciones nativas exportadas (libbrowser_native.so)
+├── java/com/example/
+│   ├── browser/
+│   │   ├── download/
+│   │   │   └── DownloadManagerHelper.kt # Gestor de descargas con integración al DownloadManager de Android
+│   │   └── engine/
+│   │       ├── BrowserEngineContract.kt # Interfaz abstracta que define las operaciones de navegación web
+│   │       ├── GeckoPromptHandler.kt    # Delegado GeckoView PromptDelegate para alertas, confirmaciones y ficheros
+│   │       ├── GeckoRuntimeProvider.kt  # Singleton de GeckoRuntime con optimización de memoria y ETP
+│   │       ├── GeckoSessionManager.kt   # Gestor concurrente de sesiones GeckoSession, aislamiento contextId y purga de datos
+│   │       ├── GeckoViewEngine.kt       # Implementación completa de BrowserEngineContract sobre GeckoView
+│   │       ├── NativeBridge.kt          # Puente Kotlin-JNI seguro para el subsistema C++26 y Rust
+│   │       └── WebPrompt.kt             # Modelos de eventos para diálogos nativos en Compose
+core-native/                         # Módulo de alto rendimiento en Rust (Edition 2024)
+├── Cargo.toml                       # Manifiesto de dependencias y configuración staticlib/cdylib
+└── src/
+    └── lib.rs                       # Funciones nativas de alto rendimiento (hashing, validación de URLs)
 ├── data/
 │   ├── local/
 │   │   ├── dao/
 │   │   │   ├── BookmarkDao.kt       # Acceso a marcadores guardados
+│   │   │   ├── DownloadDao.kt       # Acceso y control del registro de descargas
 │   │   │   ├── HistoryDao.kt        # Acceso al historial cronológico de navegación
-│   │   │   └── TabDao.kt            # Acceso y persistencia de pestañas abiertas
+│   │   │   └── TabDao.kt            # Acceso y persistencia de pestañas abiertas (normales y protegidas)
 │   │   ├── entity/
 │   │   │   ├── BookmarkEntity.kt    # Modelo relacional para marcadores
+│   │   │   ├── DownloadEntity.kt    # Modelo relacional para descargas (estado, bytes, URI)
 │   │   │   ├── HistoryEntity.kt     # Modelo relacional para historial
-│   │   │   └── TabEntity.kt         # Modelo relacional para pestañas (incluye flag isIncognito)
-│   │   └── BrowserDatabase.kt       # Base de datos Room con control de versiones y migraciones
-│   └── model/
-│       ├── BrowserTab.kt            # Modelo de dominio para pestañas
-│       ├── SearchEngine.kt          # Definición de proveedores de búsqueda (DuckDuckGo, Google, etc.)
-│       └── UserSettings.kt          # Preferencias de usuario (motor de búsqueda, JS, DNT, desktop mode)
-├── engine/
-│   └── contract/
-│       └── BrowserEngineContract.kt # Interfaz abstracta que define las operaciones de navegación web
+│   │   │   └── TabEntity.kt         # Modelo relacional para pestañas (incluye flags isIncognito, isProtected y contextId)
+│   │   └── BrowserDatabase.kt       # Base de datos Room con control de versiones (v3) y migraciones
+│   ├── model/
+│   │   ├── BrowserTab.kt            # Modelo de dominio para pestañas
+│   │   └── SearchEngine.kt          # Proveedores de búsqueda (DuckDuckGo, Google, Bing, etc.)
+│   ├── preferences/
+│   │   └── BrowserPreferences.kt    # Persistencia de preferencias del usuario mediante DataStore
+│   └── repository/
+│       └── BrowserRepository.kt     # Repositorio unificado que conecta DAOs, DataStore y ViewModel
 ├── ui/
 │   ├── bookmarks/
 │   │   └── BookmarksScreen.kt       # Pantalla completa de marcadores con búsqueda y CRUD
 │   ├── browser/
-│   │   ├── BrowserScreen.kt         # Pantalla principal con barra omnibox, barra de herramientas y visor
-│   │   ├── BrowserHomeView.kt       # Pantalla de inicio visual (accesos rápidos, atajos y bienvenida)
-│   │   └── BrowserWebView.kt        # Componente visual que acopla el visor web con Compose
+│   │   └── BrowserScreen.kt         # Pantalla principal con contenedor GeckoView, omnibox y menú
+│   ├── components/
+│   │   └── WebPromptDialog.kt       # Diálogos nativos Material 3 para alerts, confirms, prompts y ficheros
+│   ├── downloads/
+│   │   └── DownloadsScreen.kt       # Pantalla avanzada de descargas con búsqueda, apertura y vaciado
 │   ├── history/
 │   │   └── HistoryScreen.kt         # Pantalla completa de historial con búsqueda y eliminación
 │   ├── navigation/
-│   │   └── BrowserNavigation.kt     # Grafo y rutas de navegación con Jetpack Navigation Compose
+│   │   ├── BrowserNavGraph.kt       # Grafo y rutas de navegación con Jetpack Navigation Compose
+│   │   └── Screen.kt                # Definición de pantallas y rutas fuertemente tipadas
 │   ├── settings/
 │   │   └── SettingsScreen.kt        # Pantalla completa de ajustes y configuración del navegador
 │   ├── tabs/
-│   │   └── TabsScreen.kt            # Pantalla en cuadrícula para gestionar pestañas normales e incógnito
+│   │   └── TabsScreen.kt            # Pantalla en cuadrícula para gestionar pestañas normales, protegidas e incógnito
 │   └── theme/
 │       ├── Color.kt                 # Paleta de colores M3
 │       ├── Theme.kt                 # Configuración de MaterialTheme con soporte de modo oscuro/claro
 │       └── Type.kt                  # Configuración tipográfica
 ├── viewmodel/
-│   └── BrowserViewModel.kt          # Gestor de estado centralizado que coordina motor, Room y UI
+│   └── BrowserViewModel.kt          # Gestor de estado centralizado que coordina motor Gecko, Room y UI
 └── MainActivity.kt                  # Activity principal con configuración Edge-to-Edge y contenedor Compose
 ```
 
@@ -66,14 +90,14 @@ app/src/main/java/com/example/
 ```text
 [Usuario / Interfaz Compose]
           │
-          ▼ Dispara eventos (Intent: Abrir pestaña, Navegar URL, Añadir marcador)
+          ▼ Dispara eventos (Intent: Abrir pestaña protegida, Navegar URL, Añadir marcador)
 [BrowserViewModel]
           │
      ┌────┴──────────────────────────┐
      ▼                               ▼
-[BrowserDatabase (Room)]    [BrowserEngineContract]
- (Pestañas, Historial,           (Carga URL, Back/Forward,
-   Marcadores en SQLite)          Desktop Mode, Progreso)
+[BrowserDatabase (Room v3)]  [BrowserEngineContract]
+ (Pestañas, Historial,        (Carga URL, Back/Forward,
+  Marcadores en SQLite)        Desktop Mode, Progreso)
      │                               │
      └─────────────┬─────────────────┘
                    ▼
@@ -89,6 +113,7 @@ app/src/main/java/com/example/
 
 - **Inyección y Ciclo de Vida:** La base de datos `BrowserDatabase` se inicializa como Singleton mediante lazy evaluation para evitar sobrecargas de memoria o accesos concurrentes destructivos.
 - **Seguridad en Modo Incógnito:** Las pestañas marcadas como `isIncognito = true` no se persisten en la tabla `tabs` de Room y su navegación no genera registros en `history`.
+- **Aislamiento por Pestañas Protegidas (Context Containers):** Cada pestaña protegida opera con su propio `contextId` inyectado en `GeckoSessionSettings.Builder`. Esto crea una partición estricta de cookies, caché web y `localStorage`. Al eliminarse la pestaña, `GeckoSessionManager` destruye la sesión y limpia el contexto en el motor invocando `runtime.storageController.clearDataForSessionContext(contextId)`.
 - **Soporte GeckoView:** La infraestructura de Gradle importa `geckoview-omni` e incluye soporte nativo legacy para empaquetado de librerías ELF `.so` (`libxul.so`, etc.), permitiendo instanciar `GeckoRuntime` y `GeckoSession` implementando el contrato `BrowserEngineContract`.
 - **Capa Nativa Híbrida (C++26 / Rust 2024):** Preparada mediante NDK r28 y CMake 3.31+ para vincular librerías `.so` de alto rendimiento. Rust asume la lógica pesada de seguridad (bloqueo de anuncios, hashes criptográficos, protección de rastreo) y C++ proporciona aceleración por hardware y enlace con APIs nativas del sistema. Los artefactos temporales de compilación de CMake y Cargo quedan completamente aislados por `.gitignore`.
 

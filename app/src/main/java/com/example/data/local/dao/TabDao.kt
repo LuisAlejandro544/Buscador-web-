@@ -15,6 +15,15 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface TabDao {
+    @Query("SELECT * FROM tabs WHERE isIncognito = 0 AND isProtected = 0 ORDER BY orderIndex ASC, id ASC")
+    fun getNormalTabs(): Flow<List<TabEntity>>
+
+    @Query("SELECT * FROM tabs WHERE isProtected = 1 ORDER BY orderIndex ASC, id ASC")
+    fun getProtectedTabs(): Flow<List<TabEntity>>
+
+    @Query("SELECT * FROM tabs WHERE isIncognito = 1 ORDER BY orderIndex ASC, id ASC")
+    fun getIncognitoTabs(): Flow<List<TabEntity>>
+
     @Query("SELECT * FROM tabs WHERE isIncognito = :isIncognito ORDER BY orderIndex ASC, id ASC")
     fun getTabs(isIncognito: Boolean): Flow<List<TabEntity>>
 
@@ -36,9 +45,15 @@ interface TabDao {
     @Query("DELETE FROM tabs WHERE id = :id")
     suspend fun deleteTabById(id: Long)
 
-    @Query("DELETE FROM tabs WHERE isIncognito = :isIncognito")
+    @Query("DELETE FROM tabs WHERE isIncognito = :isIncognito AND isProtected = 0")
     suspend fun clearTabs(isIncognito: Boolean)
+
+    @Query("DELETE FROM tabs WHERE isProtected = 1")
+    suspend fun clearProtectedTabs()
 
     @Query("SELECT COUNT(*) FROM tabs WHERE isIncognito = :isIncognito")
     fun getTabCount(isIncognito: Boolean): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM tabs WHERE isProtected = 1")
+    fun getProtectedTabCount(): Flow<Int>
 }

@@ -1,0 +1,143 @@
+name: Build Debug APK
+
+# ==============================================================================
+# Flujo de Integración Continua (CI) en GitHub Actions
+# Propósito: Compilar el APK de depuración (Debug) desde cero, sin caché,
+#            descargando dependencias de C++ (NDK 28 / CMake 3.31), Rust 2024
+#            y GeckoView Omni de Mozilla, y generando una firma debug.keystore
+#            completamente nueva en cada ejecución.
+# ==============================================================================
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+    # Permite ejecutar manualmente la compilación desde la interfaz móvil de GitHub
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-debug-apk:
+    name: Compilar APK Debug (Sin Caché)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      # 1. Descarga completa del código fuente del repositorio
+      - name: Descargar código del repositorio
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # 2. Configuración del entorno Java JDK 17 (sin caché)
+      - name: Configurar Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          # Sin caché para asegurar compilación limpia e independiente
+
+      # 3. Configuración de CMake y Android NDK para C++ (C++26 / C23)
+      - name: Instalar dependencias de C++ (NDK r28 y CMake)
+        run: |
+          echo "============================================================"
+          echo "Instalando NDK 28 y CMake para compilación C++ nativa..."
+          echo "============================================================"
+          
+          # Instalar CMake 3.31+ mediante pip para coincidir con build.gradle.kts
+          python3 -m pip install --upgrade pip --break-system-packages || true
+          python3 -m pip install "cmake>=3.31.0" --break-system-packages
+          which cmake
+          cmake --version
+
+          # Aceptar licencias del SDK de Android
+          yes | sdkmanager --licenses || true
+
+          # Instalar versión exacta de NDK especificada en build.gradle.kts
+          echo "Instalando Android NDK 28.2.13676358..."
+          yes | sdkmanager --install "ndk;28.2.13676358" "platforms;android-36" "build-tools;36.0.0" || true
+
+          # Configurar variables de entorno para NDK
+          if [ -d "$ANDROID_HOME/ndk/28.2.13676358" ]; then
+            echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
+            echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
+            echo "✅ NDK 28.2.13676358 detectado y configurado correctamente."
+          else
+            echo "⚠️ Directorio específico de NDK no encontrado en ruta estándar, buscando en ndk/..."
+            NDK_DIR=$(ls -d $ANDROID_HOME/ndk/* 2>/dev/null | tail -n 1)
+            if [ -n "$NDK_DIR" ]; then
+              echo "ANDROID_NDK_HOME=$NDK_DIR" >> $GITHUB_ENV
+              echo "ANDROID_NDK_ROOT=$NDK_DIR" >> $GITHUB_ENV
+              echo "Usando NDK encontrado: $NDK_DIR"
+            fi
+          fi
+
+      # 4. Configuración del toolchain de Rust para módulos nativos (core-native)
+      - name: Instalar Rust y targets de Android (32 y 64 bits)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, armv7-linux-androideabi, i686-linux-android, x86_64-linux-android
+
+      # 5. Verificación del módulo nativo Rust
+      - name: Verificar compilación del crate Rust (core-native)
+        run: |
+          echo "Verificando core-native con Cargo (Rust Edition 2024)..."
+          cargo check --manifest-path core-native/Cargo.toml --verbose
+
+      # 6. Configuración de Gradle (sin caché)
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+          cache-disabled: true # Sin caché, como se requirió explícitamente
+
+      # 7. Descarga y resolución de dependencias (GeckoView Omni de Mozilla y AndroidX)
+      - name: Descargar dependencias de GeckoView y Maven
+        run: |
+          echo "Descargando dependencias de GeckoView Omni desde Mozilla Maven..."
+          gradle dependencies --no-build-cache --no-daemon || true
+
+      # 8. Generación forzada de firma debug.keystore desde cero usando el script .sh
+      - name: Generar firma debug.keystore desde 0 (Sin esperar claves previas)
+        run: |
+          echo "Ejecutando script de generación obligatoria de firma..."
+          chmod +x ./generate_debug_keystore.sh
+          ./generate_debug_keystore.sh debug.keystore
+
+      # 9. Compilación del APK Debug
+      - name: Compilar APK Debug con Gradle
+        run: |
+          echo "Iniciando ensamblado de APK Debug..."
+          gradle :app:assembleDebug \
+            --no-build-cache \
+            --no-daemon \
+            --stacktrace
+
+      # 10. Validar y verificar el APK generado
+      - name: Verificar APK generado
+        run: |
+          APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+          if [ -f "$APK_PATH" ]; then
+            APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
+            echo "============================================================"
+            echo "✅ ¡APK Debug compilado exitosamente!"
+            echo "📁 Ubicación: $APK_PATH"
+            echo "⚖️  Tamaño: $APK_SIZE"
+            echo "============================================================"
+          else
+            echo "❌ Error: No se encontró el archivo $APK_PATH tras la compilación."
+            exit 1
+          fi
+
+      # 11. Subir el APK Debug como artefacto de GitHub Actions
+      - name: Subir APK Debug como Artefacto Descargable
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30

@@ -4,6 +4,7 @@ plugins {
   alias(libs.plugins.kotlin.compose) apply false
   alias(libs.plugins.google.devtools.ksp) apply false
   alias(libs.plugins.roborazzi) apply false
-  alias(libs.plugins.secrets) apply false
+  // Plugin secrets deshabilitado para no requerir archivos .env al compilar
+  // alias(libs.plugins.secrets) apply false
   alias(libs.plugins.google.services) apply false
 }

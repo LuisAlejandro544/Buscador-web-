@@ -4,11 +4,14 @@ import android.app.Application
 import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.browser.download.DownloadManagerHelper
 import com.example.browser.engine.BrowserEngineContract
 import com.example.browser.engine.EnginePageState
 import com.example.browser.engine.GeckoSessionManager
+import com.example.browser.engine.WebPromptRequest
 import com.example.data.local.BrowserDatabase
 import com.example.data.local.entity.BookmarkEntity
+import com.example.data.local.entity.DownloadEntity
 import com.example.data.local.entity.HistoryEntity
 import com.example.data.local.entity.TabEntity
 import com.example.data.model.SearchEngine
@@ -27,7 +30,7 @@ import kotlinx.coroutines.launch
 /**
  * ViewModel principal del Navegador Web.
  * Controla el ciclo de vida de las pestañas, estado de carga, historial,
- * marcadores y configuraciones del motor.
+ * marcadores, descargas avanzadas, diálogos web nativos y sincronización de configuraciones.
  */
 class BrowserViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -40,6 +43,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             tabDao = database.tabDao(),
             bookmarkDao = database.bookmarkDao(),
             historyDao = database.historyDao(),
+            downloadDao = database.downloadDao(),
             preferences = preferences
         )
     }
@@ -63,15 +67,23 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val homePageUrl: StateFlow<String> = repository.homePageUrl
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "about:home")
 
-    // --- Modo Incógnito ---
+    // --- Modos de Navegación ---
+    enum class TabMode { NORMAL, PROTECTED, INCOGNITO }
+
     private val _isIncognitoMode = MutableStateFlow(false)
     val isIncognitoMode: StateFlow<Boolean> = _isIncognitoMode.asStateFlow()
 
+    private val _isProtectedMode = MutableStateFlow(false)
+    val isProtectedMode: StateFlow<Boolean> = _isProtectedMode.asStateFlow()
+
     // --- Pestañas ---
-    val normalTabs: StateFlow<List<TabEntity>> = repository.getTabs(isIncognito = false)
+    val normalTabs: StateFlow<List<TabEntity>> = repository.getNormalTabs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val incognitoTabs: StateFlow<List<TabEntity>> = repository.getTabs(isIncognito = true)
+    val protectedTabs: StateFlow<List<TabEntity>> = repository.getProtectedTabs()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val incognitoTabs: StateFlow<List<TabEntity>> = repository.getIncognitoTabs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _activeTabId = MutableStateFlow<Long?>(null)
@@ -102,6 +114,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val _historySearchQuery = MutableStateFlow("")
     val historySearchQuery: StateFlow<String> = _historySearchQuery.asStateFlow()
 
+    // --- Descargas ---
+    val downloads: StateFlow<List<DownloadEntity>> = repository.getAllDownloads()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // --- Diálogos Web Nativos (Prompts de JavaScript y Archivos) ---
+    private val _activeWebPrompt = MutableStateFlow<WebPromptRequest?>(null)
+    val activeWebPrompt: StateFlow<WebPromptRequest?> = _activeWebPrompt.asStateFlow()
+
     val sessionManager = GeckoSessionManager(application)
 
     // Referencia al motor de renderizado activo
@@ -110,15 +130,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     init {
         // Inicializar pestañas si la lista está vacía
         viewModelScope.launch {
-            val tabs = repository.getTabs(false).first()
+            val tabs = repository.getNormalTabs().first()
             if (tabs.isEmpty()) {
-                val newId = repository.createTab("Nueva Pestaña", "about:home", isIncognito = false)
+                val newId = repository.createTab("Nueva Pestaña", "about:home", isIncognito = false, isProtected = false)
                 _activeTabId.value = newId
                 _activeTab.value = repository.getTabById(newId)
             } else {
                 val mostRecent = repository.getMostRecentActiveTab() ?: tabs.first()
                 _activeTabId.value = mostRecent.id
                 _activeTab.value = mostRecent
+                _isIncognitoMode.value = mostRecent.isIncognito
+                _isProtectedMode.value = mostRecent.isProtected
                 _omniboxText.value = if (mostRecent.url == "about:home") "" else mostRecent.url
             }
         }
@@ -133,6 +155,20 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 } else {
                     _isCurrentPageBookmarked.value = false
                 }
+            }
+        }
+
+        // Sincronización dinámica de JavaScript en tiempo real con todas las sesiones
+        viewModelScope.launch {
+            repository.isJavaScriptEnabled.collect { enabled ->
+                sessionManager.setJavaScriptEnabled(enabled)
+            }
+        }
+
+        // Sincronización dinámica de Do Not Track / Protección de Rastreo con GeckoView
+        viewModelScope.launch {
+            repository.isDoNotTrackEnabled.collect { enabled ->
+                sessionManager.setDoNotTrackEnabled(enabled)
             }
         }
     }
@@ -186,15 +222,43 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
      */
     fun toggleIncognitoMode(enabled: Boolean) {
         _isIncognitoMode.value = enabled
+        _isProtectedMode.value = false
         viewModelScope.launch {
-            val tabs = repository.getTabs(enabled).first()
+            if (enabled) {
+                val tabs = repository.getIncognitoTabs().first()
+                if (tabs.isEmpty()) {
+                    val newId = repository.createTab(
+                        title = "Pestaña Privada",
+                        url = "about:home",
+                        isIncognito = true,
+                        isProtected = false
+                    )
+                    switchToTab(newId)
+                } else {
+                    switchToTab(tabs.first().id)
+                }
+            } else {
+                val tabs = repository.getNormalTabs().first()
+                if (tabs.isEmpty()) {
+                    val newId = repository.createTab("Nueva Pestaña", "about:home", isIncognito = false, isProtected = false)
+                    switchToTab(newId)
+                } else {
+                    switchToTab(tabs.first().id)
+                }
+            }
+        }
+    }
+
+    /**
+     * Activa el modo de pestañas protegidas.
+     */
+    fun switchToProtectedMode() {
+        _isIncognitoMode.value = false
+        _isProtectedMode.value = true
+        viewModelScope.launch {
+            val tabs = repository.getProtectedTabs().first()
             if (tabs.isEmpty()) {
-                val newId = repository.createTab(
-                    title = if (enabled) "Pestaña Privada" else "Nueva Pestaña",
-                    url = "about:home",
-                    isIncognito = enabled
-                )
-                switchToTab(newId)
+                createProtectedTab("about:home")
             } else {
                 switchToTab(tabs.first().id)
             }
@@ -202,18 +266,42 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Crea una nueva pestaña.
+     * Crea una nueva pestaña con soporte para modo normal, incógnito o protegido.
      */
-    fun createNewTab(url: String = "about:home", isIncognito: Boolean = _isIncognitoMode.value) {
+    fun createNewTab(
+        url: String = "about:home",
+        isIncognito: Boolean = _isIncognitoMode.value,
+        isProtected: Boolean = _isProtectedMode.value
+    ) {
         viewModelScope.launch {
-            val title = if (url == "about:home") "Nueva Pestaña" else url
-            val id = repository.createTab(title, url, isIncognito)
+            val title = when {
+                url != "about:home" && url != "about:blank" -> url
+                isProtected -> "Pestaña Protegida"
+                isIncognito -> "Pestaña Privada"
+                else -> "Nueva Pestaña"
+            }
+            val contextId = if (isProtected) "isolated_tab_${System.currentTimeMillis()}" else null
+            val id = repository.createTab(
+                title = title,
+                url = url,
+                isIncognito = isIncognito,
+                isProtected = isProtected,
+                contextId = contextId
+            )
             switchToTab(id)
         }
     }
 
     /**
-     * Cambia la pestaña activa.
+     * Crea específicamente una pestaña en una burbuja aislada protegida.
+     * En esta pestaña, las cookies y datos web no se mezclan con la cuenta principal.
+     */
+    fun createProtectedTab(url: String = "about:home") {
+        createNewTab(url = url, isIncognito = false, isProtected = true)
+    }
+
+    /**
+     * Cambia la pestaña activa sincronizando su modo (Normal, Protegida o Incógnito).
      */
     fun switchToTab(tabId: Long) {
         viewModelScope.launch {
@@ -221,6 +309,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             _activeTabId.value = tab.id
             _activeTab.value = tab
             _isIncognitoMode.value = tab.isIncognito
+            _isProtectedMode.value = tab.isProtected
             _omniboxText.value = if (tab.url == "about:home" || tab.url == "about:blank") "" else tab.url
 
             _pageState.value = _pageState.value.copy(
@@ -233,17 +322,32 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Cierra una pestaña. Si es la pestaña activa, cambia a otra o crea una nueva.
+     * Cierra una pestaña. Si es la pestaña activa, cambia a otra del mismo modo o vuelve a normal.
+     * Si la pestaña era protegida, destruye todo rastro de sus cookies y datos de sesión aislados.
      */
     fun closeTab(tabId: Long) {
         viewModelScope.launch {
-            sessionManager.closeSession(tabId)
+            val tab = repository.getTabById(tabId)
+            val isProtected = tab?.isProtected ?: false
+            val contextId = tab?.contextId
+
+            sessionManager.closeSession(tabId, isProtected = isProtected, contextId = contextId)
             repository.closeTab(tabId)
-            val isIncog = _isIncognitoMode.value
-            val remainingTabs = repository.getTabs(isIncog).first()
+
+            val remainingTabs = when {
+                _isProtectedMode.value -> repository.getProtectedTabs().first()
+                _isIncognitoMode.value -> repository.getIncognitoTabs().first()
+                else -> repository.getNormalTabs().first()
+            }
+
             if (remainingTabs.isEmpty()) {
-                val newId = repository.createTab("Nueva Pestaña", "about:home", isIncog)
-                switchToTab(newId)
+                val normalTabs = repository.getNormalTabs().first()
+                if (normalTabs.isNotEmpty()) {
+                    switchToTab(normalTabs.first().id)
+                } else {
+                    val newId = repository.createTab("Nueva Pestaña", "about:home", isIncognito = false, isProtected = false)
+                    switchToTab(newId)
+                }
             } else if (_activeTabId.value == tabId) {
                 switchToTab(remainingTabs.first().id)
             }
@@ -251,19 +355,43 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Cierra todas las pestañas del modo actual.
+     * Cierra todas las pestañas según el modo actual o especificado.
      */
-    fun closeAllTabs(isIncognito: Boolean) {
+    fun closeAllTabs(mode: TabMode) {
         viewModelScope.launch {
-            val tabs = repository.getTabs(isIncognito).first()
-            tabs.forEach { sessionManager.closeSession(it.id) }
-            repository.clearTabs(isIncognito)
-            val newId = repository.createTab(
-                title = if (isIncognito) "Pestaña Privada" else "Nueva Pestaña",
-                url = "about:home",
-                isIncognito = isIncognito
-            )
-            switchToTab(newId)
+            when (mode) {
+                TabMode.NORMAL -> {
+                    val tabs = repository.getNormalTabs().first()
+                    tabs.forEach { sessionManager.closeSession(it.id) }
+                    repository.clearTabs(isIncognito = false)
+                    val newId = repository.createTab("Nueva Pestaña", "about:home", isIncognito = false)
+                    switchToTab(newId)
+                }
+                TabMode.PROTECTED -> {
+                    val tabs = repository.getProtectedTabs().first()
+                    tabs.forEach { sessionManager.closeSession(it.id, isProtected = true, contextId = it.contextId) }
+                    repository.clearProtectedTabs()
+                    val normalTabs = repository.getNormalTabs().first()
+                    if (normalTabs.isNotEmpty()) {
+                        switchToTab(normalTabs.first().id)
+                    } else {
+                        val newId = repository.createTab("Nueva Pestaña", "about:home", isIncognito = false)
+                        switchToTab(newId)
+                    }
+                }
+                TabMode.INCOGNITO -> {
+                    val tabs = repository.getIncognitoTabs().first()
+                    tabs.forEach { sessionManager.closeSession(it.id) }
+                    repository.clearTabs(isIncognito = true)
+                    val normalTabs = repository.getNormalTabs().first()
+                    if (normalTabs.isNotEmpty()) {
+                        switchToTab(normalTabs.first().id)
+                    } else {
+                        val newId = repository.createTab("Nueva Pestaña", "about:home", isIncognito = false)
+                        switchToTab(newId)
+                    }
+                }
+            }
         }
     }
 
@@ -390,8 +518,51 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun toggleDesktopMode() {
         val newMode = !_pageState.value.isDesktopMode
         _pageState.value = _pageState.value.copy(isDesktopMode = newMode)
+        _activeTabId.value?.let { tabId ->
+            sessionManager.setDesktopModeForTab(tabId, newMode)
+        }
         engineController?.setDesktopMode(newMode)
         engineController?.reload()
+    }
+
+    // --- Gestión Avanzada de Descargas ---
+    fun initiateDownload(
+        url: String,
+        contentDisposition: String? = null,
+        mimeType: String? = null,
+        contentLength: Long = 0L
+    ) {
+        val downloadEntity = DownloadManagerHelper.startDownload(
+            context = getApplication(),
+            url = url,
+            contentDisposition = contentDisposition,
+            mimeType = mimeType,
+            contentLength = contentLength
+        )
+        viewModelScope.launch {
+            repository.addDownload(downloadEntity)
+        }
+    }
+
+    fun openDownload(download: DownloadEntity) {
+        DownloadManagerHelper.openDownloadedFile(getApplication(), download)
+    }
+
+    fun deleteDownload(id: Long) {
+        viewModelScope.launch { repository.deleteDownload(id) }
+    }
+
+    fun clearAllDownloads() {
+        viewModelScope.launch { repository.clearAllDownloads() }
+    }
+
+    // --- Gestión de Diálogos Web ---
+    fun postWebPrompt(prompt: WebPromptRequest) {
+        _activeWebPrompt.value = prompt
+    }
+
+    fun dismissWebPrompt() {
+        _activeWebPrompt.value = null
     }
 
     // --- Configuración de Preferencias ---

@@ -61,6 +61,7 @@ fun BrowserNavGraph(
 
         composable(Screen.Downloads.route) {
             DownloadsScreen(
+                viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() }
             )
         }
