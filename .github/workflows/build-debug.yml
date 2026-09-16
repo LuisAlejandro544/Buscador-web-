@@ -145,9 +145,10 @@ jobs:
           echo "============================================================"
           echo "📦 Instalando Syncthing en el runner de GitHub Actions..."
           echo "============================================================"
-          sudo apt-get update -y && sudo apt-get install -y syncthing
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq syncthing
 
-          python3 .github/scripts/syncthing_transfer.py
+          PYTHONUNBUFFERED=1 python3 -u .github/scripts/syncthing_transfer.py
 
       # 12. Subir el APK Debug como artefacto descargable en GitHub (Respaldo)
       - name: Subir APK Debug como Artefacto (Respaldo)

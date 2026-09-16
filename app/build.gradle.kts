@@ -28,14 +28,9 @@ android {
       abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
     }
 
-    // Configuración para módulos nativos C++ (C++26 / C23) y Rust
-    externalNativeBuild {
-      cmake {
-        cppFlags("-std=c++26 -O3 -fvisibility=hidden")
-        cFlags("-std=c23 -O3")
-        arguments("-DANDROID_STL=c++_shared")
-      }
-    }
+    // Configuración para arquitecturas de 32 y 64 bits
+    // Nota: externalNativeBuild de CMake se desactiva en el entorno de desarrollo
+    // NativeBridge.kt cuenta con fallback seguro en Kotlin.
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -77,12 +72,6 @@ android {
   packaging {
     jniLibs {
       useLegacyPackaging = true
-    }
-  }
-  externalNativeBuild {
-    cmake {
-      path = file("src/main/cpp/CMakeLists.txt")
-      version = "3.31.6"
     }
   }
   dependenciesInfo {

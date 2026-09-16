@@ -95,11 +95,13 @@ def main():
     with open(os.path.join(home_dir, "config.xml"), "w") as f:
         f.write(config_xml)
 
-    # 4. Iniciar demonio de Syncthing en segundo plano
-    print("⏳ Levantando nodo P2P de Syncthing...")
+    # 4. Iniciar demonio de Syncthing en segundo plano (redireccionando a log para evitar deadlock de PIPE)
+    print("⏳ Levantando nodo P2P de Syncthing...", flush=True)
+    log_path = "/tmp/syncthing.log"
+    log_file = open(log_path, "w")
     proc = subprocess.Popen(
         ["syncthing", "--no-browser", f"--home={home_dir}"],
-        stdout=subprocess.PIPE,
+        stdout=log_file,
         stderr=subprocess.STDOUT,
         text=True
     )
@@ -120,14 +122,19 @@ def main():
             time.sleep(1)
 
     if not api_ready:
-        print("⚠️ No se pudo iniciar el servicio Syncthing en el runner.")
+        print("⚠️ No se pudo iniciar el servicio Syncthing en el runner.", flush=True)
         proc.terminate()
+        log_file.close()
+        if os.path.exists(log_path):
+            with open(log_path, "r") as lf:
+                print("--- Últimos logs de Syncthing ---", flush=True)
+                print(lf.read()[-1000:], flush=True)
         sys.exit(0)
 
-    print("✅ Nodo Syncthing iniciado. Buscando teléfono en la red P2P...")
-    print("💡 Nota: Asegúrate de tener Syncthing-fork abierto en tu móvil.")
+    print("✅ Nodo Syncthing iniciado. Buscando teléfono en la red P2P...", flush=True)
+    print("💡 Nota: Asegúrate de tener Syncthing-fork abierto en tu móvil.", flush=True)
 
-    max_seconds = 600  # 10 minutos máximo
+    max_seconds = 300  # 5 minutos máximo de espera
     start_time = time.time()
     last_print = 0
     synced = False
@@ -155,20 +162,20 @@ def main():
                     need_bytes = comp_data.get("needBytes", 1)
 
                 if completion >= 100.0 or need_bytes == 0:
-                    print("============================================================")
-                    print("🎉 ¡Sincronización P2P completada al 100%!")
-                    print("📲 El archivo app-debug.apk ya se encuentra en tu teléfono.")
-                    print("📂 Ruta: /storage/emulated/0/Navegador/app-debug.apk")
-                    print("============================================================")
+                    print("============================================================", flush=True)
+                    print("🎉 ¡Sincronización P2P completada al 100%!", flush=True)
+                    print("📲 El archivo app-debug.apk ya se encuentra en tu teléfono.", flush=True)
+                    print("📂 Ruta: /storage/emulated/0/Navegador/app-debug.apk", flush=True)
+                    print("============================================================", flush=True)
                     synced = True
                     break
                 else:
                     if elapsed - last_print >= 5:
-                        print(f"📡 Teléfono conectado. Transfiriendo APK: {completion:.1f}% ({elapsed}s)")
+                        print(f"📡 Teléfono conectado. Transfiriendo APK: {completion:.1f}% ({elapsed}s)", flush=True)
                         last_print = elapsed
             else:
                 if elapsed - last_print >= 10:
-                    print(f"🔍 Esperando conexión P2P con el teléfono... ({elapsed}s transcurridos)")
+                    print(f"🔍 Esperando conexión P2P con el teléfono... ({elapsed}s transcurridos / max {max_seconds}s)", flush=True)
                     last_print = elapsed
 
         except Exception as e:
@@ -182,6 +189,7 @@ def main():
         proc.wait(timeout=5)
     except Exception:
         proc.kill()
+    log_file.close()
 
     if not synced:
         print("============================================================")
