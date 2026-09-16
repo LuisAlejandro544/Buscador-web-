@@ -96,15 +96,17 @@ El APK resultante se genera en el directorio:
 El repositorio cuenta con un flujo automatizado en `.github/workflows/build-debug.yml` con activación **exclusivamente manual** (`workflow_dispatch`):
 - **Compilación Limpia (Sin Caché):** Descarga el código, instala Java JDK 17, Android NDK 28, CMake 3.31+, Rust 2024 y descarga las dependencias de GeckoView Omni de Mozilla sin utilizar cachés previas.
 - **Generación Forzada de Firma:** Ejecuta `./generate_debug_keystore.sh` para generar un almacén de claves `debug.keystore` (RSA 2048 bits / PKCS12) desde cero de forma 100% desatendida y obligatoria.
-- **Transferencia Directa P2P al Teléfono:** Tras compilar el APK de depuración, se conecta a tu red privada segura mediante **Tailscale** y transfiere el archivo directamente a la carpeta `/storage/emulated/0/Navegador/app-debug.apk` de tu móvil mediante SFTP/SCP.
-- **Artefacto de Respaldo:** Si la conexión con el teléfono no estuviera activa, el APK se guarda de forma segura como artefacto descargable en la pestaña Actions de GitHub.
+- **Sincronización Directa P2P con Syncthing:** Tras compilar el APK de depuración, levanta un nodo Syncthing con certificado fijo y se conecta punto a punto con tu app **Syncthing-fork** en el teléfono, depositando automáticamente `app-debug.apk` en `/storage/emulated/0/Navegador/app-debug.apk` mediante la red P2P global con relays cifrados.
+- **Artefacto de Respaldo:** Si la app de Syncthing en el teléfono no estuviera activa, el APK se guarda de forma segura como artefacto descargable en la pestaña Actions de GitHub.
 
-### 🔐 Secretos Requeridos en GitHub (Settings ➔ Secrets and variables ➔ Actions)
+### 🔐 Secreto Requerido en GitHub (Settings ➔ Secrets and variables ➔ Actions)
 
-| Secreto | Descripción | Valor de Ejemplo |
+| Secreto | Descripción | Dónde obtenerlo |
 | :--- | :--- | :--- |
-| `TAILSCALE_AUTHKEY` | Clave de autenticación generada en la consola de Tailscale | `tskey-auth-kXXXXX...` |
-| `PHONE_IP` | Dirección IP privada de tu teléfono asignada por Tailscale | `100.x.y.z` |
-| `SSH_USER` | Nombre de usuario configurado en la app SFTP del móvil | `github` |
-| `SSH_PASSWORD` | Contraseña configurada en la app SFTP para el usuario | `(tu_contraseña)` |
-| `SSH_PORT` | Puerto de escucha del servidor SSH/SFTP en Android | `2222` |
+| `PHONE_SYNCTHING_ID` | Device ID de tu teléfono en la app Syncthing-fork | En tu app: Menú ➔ *Mostrar ID de este dispositivo* (copiar código) |
+
+### 📱 Configuración en Syncthing-fork (Teléfono)
+1. **Carpeta compartida:** Etiqueta: `Navegador`, ID: `navegador-apk`, Ruta: `/storage/emulated/0/Navegador`.
+2. **Dispositivo GitHub Actions:** Añadir dispositivo con ID:
+   `IAXLEGX-HNWFEWZ-P4OQVFW-VBKMPQ2-ZJI6MX6-OE6YPBD-S4BC346-266H4AO`
+   Nombre: `GitHub Actions`, y marcar la casilla de la carpeta `Navegador`.

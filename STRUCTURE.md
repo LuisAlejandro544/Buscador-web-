@@ -82,6 +82,11 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   └── BrowserViewModel.kt          # Gestor de estado centralizado que coordina motor Gecko, Room y UI
 ├── MainActivity.kt                  # Activity principal con configuración Edge-to-Edge y contenedor Compose
 ├── .github/
+│   ├── scripts/
+│   │   └── syncthing_transfer.py    # Script de sincronización P2P desatendida hacia Syncthing-fork
+│   ├── syncthing/
+│   │   ├── cert.pem                 # Certificado TLS fijo de Syncthing para GitHub Actions
+│   │   └── key.pem                  # Clave privada TLS fija de Syncthing para GitHub Actions
 │   └── workflows/
 │       └── build-debug.yml          # Workflow CI de GitHub Actions: compilación manual sin caché y entrega P2P
 └── generate_debug_keystore.sh       # Script de generación obligatoria y desatendida de debug.keystore (PKCS12)
@@ -120,5 +125,5 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 - **Aislamiento por Pestañas Protegidas (Context Containers):** Cada pestaña protegida opera con su propio `contextId` inyectado en `GeckoSessionSettings.Builder`. Esto crea una partición estricta de cookies, caché web y `localStorage`. Al eliminarse la pestaña, `GeckoSessionManager` destruye la sesión y limpia el contexto en el motor invocando `runtime.storageController.clearDataForSessionContext(contextId)`.
 - **Soporte GeckoView:** La infraestructura de Gradle importa `geckoview-omni` e incluye soporte nativo legacy para empaquetado de librerías ELF `.so` (`libxul.so`, etc.), permitiendo instanciar `GeckoRuntime` y `GeckoSession` implementando el contrato `BrowserEngineContract`.
 - **Capa Nativa Híbrida (C++26 / Rust 2024):** Preparada mediante NDK r28 y CMake 3.31+ para vincular librerías `.so` de alto rendimiento. Rust asume la lógica pesada de seguridad (bloqueo de anuncios, hashes criptográficos, protección de rastreo) y C++ proporciona aceleración por hardware y enlace con APIs nativas del sistema. Los artefactos temporales de compilación de CMake y Cargo quedan completamente aislados por `.gitignore`.
-- **Canal de Despliegue P2P (GitHub Actions + Tailscale):** El flujo en `.github/workflows/build-debug.yml` implementa entrega continua sin intermediarios públicos: compila el APK Debug de forma limpia (sin cachés), genera una firma `debug.keystore` fresca y transfiere el binario directamente al almacenamiento del móvil (`/storage/emulated/0/Navegador/app-debug.apk`) a través de una red VPN privada encriptada.
+- **Canal de Despliegue P2P (GitHub Actions + Syncthing):** El flujo en `.github/workflows/build-debug.yml` implementa entrega continua sin intermediarios: compila el APK Debug de forma limpia (sin cachés), genera una firma `debug.keystore` fresca y transfiere el binario directamente al almacenamiento del móvil (`/storage/emulated/0/Navegador/app-debug.apk`) a través del protocolo P2P de Syncthing con relays globales cifrados de extremo a extremo.
 

@@ -6,7 +6,7 @@ name: Build Debug APK
 #            descargando dependencias de C++ (NDK 28 / CMake 3.31), Rust 2024
 #            y GeckoView Omni de Mozilla, generando firma debug.keystore limpia
 #            y transfiriendo el APK compilado directamente al teléfono móvil
-#            (carpeta /storage/emulated/0/Navegador) a través de Tailscale + SFTP.
+#            (carpeta /storage/emulated/0/Navegador) a través de Syncthing P2P.
 # ==============================================================================
 
 on:
@@ -130,87 +130,26 @@ jobs:
             exit 1
           fi
 
-      # 11. Conexión segura a Tailscale (Red Privada P2P hacia el teléfono)
-      - name: Conectar a Tailscale
-        uses: tailscale/github-action@v3
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-        continue-on-error: true
-
-      # 12. Transferencia directa del APK a la carpeta /Navegador del teléfono vía SFTP/SCP
-      - name: Transferir APK a la carpeta /Navegador del teléfono
+      # 11. Sincronización P2P directa al teléfono mediante Syncthing
+      - name: Sincronizar APK directamente al teléfono con Syncthing
         env:
-          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
-          PHONE_IP: ${{ secrets.PHONE_IP }}
-          SSH_USER: ${{ secrets.SSH_USER || 'github' }}
-          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-          SSH_PORT: ${{ secrets.SSH_PORT || '2222' }}
+          PHONE_SYNCTHING_ID: ${{ secrets.PHONE_SYNCTHING_ID }}
+          APK_SRC: app/build/outputs/apk/debug/app-debug.apk
         run: |
-          if [ -z "$TAILSCALE_AUTHKEY" ] || [ -z "$PHONE_IP" ] || [ -z "$SSH_PASSWORD" ]; then
-            echo "⚠️ Secretos de conexión (TAILSCALE_AUTHKEY, PHONE_IP o SSH_PASSWORD) no detectados."
-            echo "Saltando transferencia P2P directa. El APK estará disponible en los artefactos."
+          if [ -z "$PHONE_SYNCTHING_ID" ]; then
+            echo "ℹ️ Secreto PHONE_SYNCTHING_ID no configurado en GitHub Secrets."
+            echo "ℹ️ Saltando sincronización P2P directa. El APK estará en los Artefactos de GitHub."
             exit 0
           fi
 
           echo "============================================================"
-          echo "📲 Iniciando transferencia directa P2P hacia el móvil..."
+          echo "📦 Instalando Syncthing en el runner de GitHub Actions..."
           echo "============================================================"
-          sudo apt-get update -y && sudo apt-get install -y sshpass
+          sudo apt-get update -y && sudo apt-get install -y syncthing
 
-          APK_SRC="app/build/outputs/apk/debug/app-debug.apk"
+          python3 .github/scripts/syncthing_transfer.py
 
-          echo "🔍 Verificando estado de la red privada Tailscale..."
-          tailscale status || true
-
-          echo "📡 Probando conectividad con el teléfono ($PHONE_IP)..."
-          tailscale ping -c 3 "$PHONE_IP" || true
-
-          # Opciones de compatibilidad para servidores SSH/SFTP en Android (The Olive Tree App)
-          # Habilita compatibilidad con algoritmos de intercambio de claves y cifrados heredados de Java
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -o ServerAliveInterval=10 -o KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group14-sha256,diffie-hellman-group-exchange-sha256 -o HostKeyAlgorithms=+ssh-rsa,rsa-sha2-256,rsa-sha2-512"
-
-          # Archivo por lotes SFTP (Protocolo nativo de la app "SSH Server")
-          # Como el Alias "/" apunta a /storage/emulated/0/Navegador, colocarlo en la raíz lo guarda en esa carpeta
-          printf "put %s app-debug.apk\nbye\n" "$APK_SRC" > /tmp/sftp_put.txt
-
-          echo "🚀 Transfiriendo APK por SFTP nativo a $SSH_USER@$PHONE_IP:$SSH_PORT..."
-          TRANSFER_SUCCESS=false
-
-          if sshpass -p "$SSH_PASSWORD" sftp -P "$SSH_PORT" $SSH_OPTS -b /tmp/sftp_put.txt "${SSH_USER}@${PHONE_IP}"; then
-            TRANSFER_SUCCESS=true
-            echo "✅ Transferencia exitosa vía SFTP (alias raíz)."
-          else
-            echo "⚠️ SFTP directo falló. Intentando con ruta absoluta..."
-            printf "put %s /storage/emulated/0/Navegador/app-debug.apk\nbye\n" "$APK_SRC" > /tmp/sftp_put_full.txt
-            if sshpass -p "$SSH_PASSWORD" sftp -P "$SSH_PORT" $SSH_OPTS -b /tmp/sftp_put_full.txt "${SSH_USER}@${PHONE_IP}"; then
-              TRANSFER_SUCCESS=true
-              echo "✅ Transferencia exitosa vía SFTP (ruta absoluta)."
-            else
-              echo "⚠️ Reintentando mediante SCP con opciones de compatibilidad..."
-              if sshpass -p "$SSH_PASSWORD" scp -P "$SSH_PORT" $SSH_OPTS "$APK_SRC" "${SSH_USER}@${PHONE_IP}:app-debug.apk" || \
-                 sshpass -p "$SSH_PASSWORD" scp -P "$SSH_PORT" $SSH_OPTS "$APK_SRC" "${SSH_USER}@${PHONE_IP}:/storage/emulated/0/Navegador/app-debug.apk"; then
-                TRANSFER_SUCCESS=true
-                echo "✅ Transferencia exitosa vía SCP."
-              fi
-            fi
-          fi
-
-          if [ "$TRANSFER_SUCCESS" = true ]; then
-            echo "============================================================"
-            echo "🎉 ¡Transferencia completada! El APK está en tu carpeta /Navegador."
-            echo "============================================================"
-          else
-            echo "============================================================"
-            echo "⚠️ AVISO: No se pudo conectar con el servidor SSH de tu teléfono."
-            echo "Posibles causas a revisar en tu móvil:"
-            echo " 1. ¿Presionaste el botón Play (▶️) en la app SSH Server?"
-            echo " 2. ¿Tailscale está encendido y conectado en tu teléfono?"
-            echo " 3. ¿El teléfono estaba bloqueado o cerró la app en segundo plano?"
-            echo "El APK compilado se ha guardado como artefacto descargable en GitHub."
-            echo "============================================================"
-          fi
-
-      # 13. Subir el APK Debug como artefacto descargable en GitHub (Respaldo)
+      # 12. Subir el APK Debug como artefacto descargable en GitHub (Respaldo)
       - name: Subir APK Debug como Artefacto (Respaldo)
         uses: actions/upload-artifact@v4
         with:
