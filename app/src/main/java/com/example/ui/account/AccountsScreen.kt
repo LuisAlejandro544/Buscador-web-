@@ -163,7 +163,7 @@ fun AccountsScreen(
                         onClick = {
                             coroutineScope.launch {
                                 isLoadingGoogleSignIn = true
-                                val result = viewModel.credentialManager.signInWithGoogle()
+                                val result = viewModel.credentialManager.signInWithGoogle(activityContext = context)
                                 isLoadingGoogleSignIn = false
                                 if (result.isSuccess && !result.email.isNullOrBlank()) {
                                     viewModel.linkAccount(
@@ -175,13 +175,15 @@ fun AccountsScreen(
                                     )
                                     Toast.makeText(context, "Cuenta vinculada: ${result.email}", Toast.LENGTH_SHORT).show()
                                 } else {
-                                    // Si no hay Play Services o falla, ofrecemos el diálogo de entrada manual
-                                    Toast.makeText(
-                                        context,
-                                        result.errorMessage ?: "Introduce los datos de tu cuenta manualmente",
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                    showAddAccountDialog = true
+                                    // Si el usuario canceló conscientemente el selector nativo, no forzamos el diálogo manual
+                                    if (result.errorMessage != "Operación cancelada por el usuario") {
+                                        Toast.makeText(
+                                            context,
+                                            result.errorMessage ?: "Introduce los datos de tu cuenta manualmente",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                        showAddAccountDialog = true
+                                    }
                                 }
                             }
                         },
