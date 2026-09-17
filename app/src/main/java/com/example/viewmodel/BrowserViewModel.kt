@@ -111,7 +111,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         sitePermissionDelegate = SitePermissionDelegate(repository, viewModelScope)
         readerDelegate = ReaderDelegate(application, viewModelScope)
         filterDelegate = FilterDelegate(application, viewModelScope)
-        threatProtectionDelegate = ThreatProtectionDelegate(application, viewModelScope)
+        threatProtectionDelegate = ThreatProtectionDelegate(application, repository, viewModelScope)
 
         // Registrar sessionManager para hibernación de ahorro de RAM
         AppHibernationManager.registerSessionManager(sessionManager)
@@ -143,6 +143,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun deleteSitePermission(id: Long) = sitePermissionDelegate.deleteSitePermission(id)
     fun deletePermissionsForOrigin(origin: String) = sitePermissionDelegate.deletePermissionsForOrigin(origin)
     fun clearAllSitePermissions() = sitePermissionDelegate.clearAllSitePermissions()
+    @androidx.annotation.WorkerThread
     fun findSitePermissionSync(origin: String, permissionType: String) = sitePermissionDelegate.findSitePermissionSync(origin, permissionType)
     suspend fun findSitePermission(origin: String, permissionType: String) = sitePermissionDelegate.findSitePermission(origin, permissionType)
     fun setBlockNotificationPrompts(enabled: Boolean) = sitePermissionDelegate.setBlockNotificationPrompts(enabled)
@@ -823,7 +824,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val threatFeedUpdateStatus: StateFlow<String?> get() = threatProtectionDelegate.feedUpdateStatus
     val threatFeeds: StateFlow<List<SecurityThreatFeed>> get() = threatProtectionDelegate.threatFeeds
 
+    // Sincronización esporádica en segundo plano vía WorkManager y notificaciones al usuario
+    val isAutoUpdateThreatsEnabled: StateFlow<Boolean> get() = threatProtectionDelegate.isAutoUpdateThreatsEnabled
+    val isThreatsUpdateOnlyWifi: StateFlow<Boolean> get() = threatProtectionDelegate.isThreatsUpdateOnlyWifi
+    val lastThreatUpdateTimestamp: StateFlow<Long> get() = threatProtectionDelegate.lastThreatUpdateTimestamp
+    val lastThreatUpdateRulesCount: StateFlow<Int> get() = threatProtectionDelegate.lastThreatUpdateRulesCount
+
     fun toggleThreatShield(enabled: Boolean) = threatProtectionDelegate.toggleThreatShield(enabled)
+    fun toggleAutoUpdateThreats(enabled: Boolean) = threatProtectionDelegate.toggleAutoUpdateThreats(enabled)
+    fun toggleThreatsUpdateOnlyWifi(onlyWifi: Boolean) = threatProtectionDelegate.toggleThreatsUpdateOnlyWifi(onlyWifi)
+    fun triggerImmediateBackgroundCheck() = threatProtectionDelegate.triggerImmediateBackgroundCheck()
     fun evaluateNavigationSecurity(url: String): BlockedThreatDetail? = threatProtectionDelegate.evaluateNavigationSecurity(url)
     fun bypassThreatAndAllow(domain: String) = threatProtectionDelegate.bypassThreatAndAllow(domain)
     fun dismissBlockedThreat() = threatProtectionDelegate.dismissBlockedThreat()

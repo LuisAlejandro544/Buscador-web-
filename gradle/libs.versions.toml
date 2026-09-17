@@ -45,6 +45,7 @@ geckoview = "147.0.20260212191108"
 jsoup = "1.18.3"
 leakcanary = "2.14"
 anrwatchdog = "1.4.0"
+workRuntimeKtx = "2.10.0"
 # Versiones nativas de alto rendimiento (C++ y Rust)
 ndkVersion = "28.2.13676358"
 cmakeVersion = "3.31.6"
@@ -115,6 +116,7 @@ geckoview-omni = { group = "org.mozilla.geckoview", name = "geckoview-omni", ver
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 leakcanary-android = { group = "com.squareup.leakcanary", name = "leakcanary-android", version.ref = "leakcanary" }
 anrwatchdog = { group = "com.github.anrwatchdog", name = "anrwatchdog", version.ref = "anrwatchdog" }
+androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workRuntimeKtx" }
 
 
 [plugins]

@@ -61,6 +61,7 @@ class SitePermissionDelegate(
         }
     }
 
+    @androidx.annotation.WorkerThread
     fun findSitePermissionSync(origin: String, permissionType: String): SitePermissionEntity? {
         return repository.findSitePermissionSync(origin, permissionType)
     }

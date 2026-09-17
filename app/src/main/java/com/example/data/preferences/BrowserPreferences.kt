@@ -6,23 +6,33 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.data.model.SearchEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import java.io.IOException
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "browser_settings")
 
 /**
  * Gestor de preferencias de usuario del navegador usando Jetpack DataStore con respaldo sincrónico
- * en SharedPreferences para evitar pantallas de bienvenida intermitentes o parpadeos de configuración.
+ * en SharedPreferences y caché en memoria para evitar accesos a disco bloqueantes en el hilo de interfaz.
  */
 class BrowserPreferences(private val context: Context) {
 
     private val sharedPrefs = context.getSharedPreferences("browser_settings_sync", Context.MODE_PRIVATE)
+
+    @Volatile
+    private var cachedOnboardingCompleted: Boolean? = null
+
+    @Volatile
+    private var cachedSearchEngine: SearchEngine? = null
 
     companion object {
         val KEY_SEARCH_ENGINE = stringPreferencesKey("search_engine")
@@ -37,25 +47,56 @@ class BrowserPreferences(private val context: Context) {
         val KEY_BLOCK_MEDIA_PROMPTS = booleanPreferencesKey("block_media_prompts")
         val KEY_SOUND_EFFECTS_ENABLED = booleanPreferencesKey("sound_effects_enabled")
         val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+        val KEY_AUTO_UPDATE_THREATS_ENABLED = booleanPreferencesKey("auto_update_threats_enabled")
+        val KEY_THREATS_UPDATE_ONLY_WIFI = booleanPreferencesKey("threats_update_only_wifi")
+        val KEY_LAST_THREAT_UPDATE_TIMESTAMP = longPreferencesKey("last_threat_update_timestamp")
+        val KEY_LAST_THREAT_UPDATE_RULES_COUNT = intPreferencesKey("last_threat_update_rules_count")
 
         private const val SP_KEY_ONBOARDING_COMPLETED = "onboarding_completed"
         private const val SP_KEY_SEARCH_ENGINE = "search_engine"
+        private const val SP_KEY_AUTO_UPDATE_THREATS = "auto_update_threats"
+        private const val SP_KEY_THREATS_ONLY_WIFI = "threats_only_wifi"
+        private const val SP_KEY_LAST_THREAT_TIMESTAMP = "last_threat_timestamp"
+        private const val SP_KEY_LAST_THREAT_RULES = "last_threat_rules"
     }
 
     /**
-     * Consulta inmediata y sincrónica para evitar cualquier redirección errónea en el arranque.
+     * Consulta con caché en memoria para evitar lecturas de disco repetidas en el hilo principal.
      */
     fun isOnboardingCompletedSync(): Boolean {
-        return sharedPrefs.getBoolean(SP_KEY_ONBOARDING_COMPLETED, false)
+        cachedOnboardingCompleted?.let { return it }
+        val value = sharedPrefs.getBoolean(SP_KEY_ONBOARDING_COMPLETED, false)
+        cachedOnboardingCompleted = value
+        return value
     }
 
+    /**
+     * Consulta asíncrona segura despachada en Dispatchers.IO.
+     */
+    suspend fun isOnboardingCompletedAsync(): Boolean = withContext(Dispatchers.IO) {
+        isOnboardingCompletedSync()
+    }
+
+    /**
+     * Consulta con caché en memoria de motor de búsqueda.
+     */
     fun getSearchEngineSync(): SearchEngine {
+        cachedSearchEngine?.let { return it }
         val name = sharedPrefs.getString(SP_KEY_SEARCH_ENGINE, SearchEngine.DUCKDUCKGO.name)
-        return try {
+        val engine = try {
             SearchEngine.valueOf(name ?: SearchEngine.DUCKDUCKGO.name)
         } catch (_: Exception) {
             SearchEngine.DUCKDUCKGO
         }
+        cachedSearchEngine = engine
+        return engine
+    }
+
+    /**
+     * Consulta asíncrona segura de motor de búsqueda.
+     */
+    suspend fun getSearchEngineAsync(): SearchEngine = withContext(Dispatchers.IO) {
+        getSearchEngineSync()
     }
 
     val isOnboardingCompleted: Flow<Boolean> = context.dataStore.data
@@ -124,71 +165,126 @@ class BrowserPreferences(private val context: Context) {
         preferences[KEY_SOUND_EFFECTS_ENABLED] ?: true
     }
 
-    suspend fun setSearchEngine(engine: SearchEngine) {
+    val isAutoUpdateThreatsEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_AUTO_UPDATE_THREATS_ENABLED] ?: sharedPrefs.getBoolean(SP_KEY_AUTO_UPDATE_THREATS, true)
+    }
+
+    val isThreatsUpdateOnlyWifi: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_THREATS_UPDATE_ONLY_WIFI] ?: sharedPrefs.getBoolean(SP_KEY_THREATS_ONLY_WIFI, false)
+    }
+
+    val lastThreatUpdateTimestamp: Flow<Long> = context.dataStore.data.map { preferences ->
+        preferences[KEY_LAST_THREAT_UPDATE_TIMESTAMP] ?: sharedPrefs.getLong(SP_KEY_LAST_THREAT_TIMESTAMP, 0L)
+    }
+
+    val lastThreatUpdateRulesCount: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[KEY_LAST_THREAT_UPDATE_RULES_COUNT] ?: sharedPrefs.getInt(SP_KEY_LAST_THREAT_RULES, 0)
+    }
+
+    fun isAutoUpdateThreatsEnabledSync(): Boolean {
+        return sharedPrefs.getBoolean(SP_KEY_AUTO_UPDATE_THREATS, true)
+    }
+
+    fun isThreatsUpdateOnlyWifiSync(): Boolean {
+        return sharedPrefs.getBoolean(SP_KEY_THREATS_ONLY_WIFI, false)
+    }
+
+    fun recordThreatUpdateResultSync(rulesCount: Int, timestamp: Long = System.currentTimeMillis()) {
+        sharedPrefs.edit()
+            .putLong(SP_KEY_LAST_THREAT_TIMESTAMP, timestamp)
+            .putInt(SP_KEY_LAST_THREAT_RULES, rulesCount)
+            .apply()
+    }
+
+    suspend fun setSearchEngine(engine: SearchEngine) = withContext(Dispatchers.IO) {
+        cachedSearchEngine = engine
         sharedPrefs.edit().putString(SP_KEY_SEARCH_ENGINE, engine.name).apply()
         context.dataStore.edit { preferences ->
             preferences[KEY_SEARCH_ENGINE] = engine.name
         }
     }
 
-    suspend fun setDesktopModeDefault(enabled: Boolean) {
+    suspend fun setDesktopModeDefault(enabled: Boolean) = withContext(Dispatchers.IO) {
         context.dataStore.edit { preferences ->
             preferences[KEY_DESKTOP_MODE_DEFAULT] = enabled
         }
     }
 
-    suspend fun setJavaScriptEnabled(enabled: Boolean) {
+    suspend fun setJavaScriptEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
         context.dataStore.edit { preferences ->
             preferences[KEY_JAVASCRIPT_ENABLED] = enabled
         }
     }
 
-    suspend fun setCookiesEnabled(enabled: Boolean) {
+    suspend fun setCookiesEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
         context.dataStore.edit { preferences ->
             preferences[KEY_COOKIES_ENABLED] = enabled
         }
     }
 
-    suspend fun setDoNotTrack(enabled: Boolean) {
+    suspend fun setDoNotTrack(enabled: Boolean) = withContext(Dispatchers.IO) {
         context.dataStore.edit { preferences ->
             preferences[KEY_DO_NOT_TRACK] = enabled
         }
     }
 
-    suspend fun setHomePageUrl(url: String) {
+    suspend fun setHomePageUrl(url: String) = withContext(Dispatchers.IO) {
         context.dataStore.edit { preferences ->
             preferences[KEY_HOME_PAGE_URL] = url
         }
     }
 
-    suspend fun setBlockNotificationPrompts(enabled: Boolean) {
+    suspend fun setBlockNotificationPrompts(enabled: Boolean) = withContext(Dispatchers.IO) {
         context.dataStore.edit { preferences ->
             preferences[KEY_BLOCK_NOTIFICATION_PROMPTS] = enabled
         }
     }
 
-    suspend fun setBlockLocationPrompts(enabled: Boolean) {
+    suspend fun setBlockLocationPrompts(enabled: Boolean) = withContext(Dispatchers.IO) {
         context.dataStore.edit { preferences ->
             preferences[KEY_BLOCK_LOCATION_PROMPTS] = enabled
         }
     }
 
-    suspend fun setBlockMediaPrompts(enabled: Boolean) {
+    suspend fun setBlockMediaPrompts(enabled: Boolean) = withContext(Dispatchers.IO) {
         context.dataStore.edit { preferences ->
             preferences[KEY_BLOCK_MEDIA_PROMPTS] = enabled
         }
     }
 
-    suspend fun setSoundEffectsEnabled(enabled: Boolean) {
+    suspend fun setSoundEffectsEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
         context.dataStore.edit { preferences ->
             preferences[KEY_SOUND_EFFECTS_ENABLED] = enabled
         }
     }
 
-    suspend fun setOnboardingCompleted(completed: Boolean) {
+    suspend fun setOnboardingCompleted(completed: Boolean) = withContext(Dispatchers.IO) {
+        cachedOnboardingCompleted = completed
         sharedPrefs.edit().putBoolean(SP_KEY_ONBOARDING_COMPLETED, completed).apply()
         context.dataStore.edit { preferences ->
             preferences[KEY_ONBOARDING_COMPLETED] = completed
+        }
+    }
+
+    suspend fun setAutoUpdateThreatsEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        sharedPrefs.edit().putBoolean(SP_KEY_AUTO_UPDATE_THREATS, enabled).apply()
+        context.dataStore.edit { preferences ->
+            preferences[KEY_AUTO_UPDATE_THREATS_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setThreatsUpdateOnlyWifi(onlyWifi: Boolean) = withContext(Dispatchers.IO) {
+        sharedPrefs.edit().putBoolean(SP_KEY_THREATS_ONLY_WIFI, onlyWifi).apply()
+        context.dataStore.edit { preferences ->
+            preferences[KEY_THREATS_UPDATE_ONLY_WIFI] = onlyWifi
+        }
+    }
+
+    suspend fun recordThreatUpdateResult(rulesCount: Int, timestamp: Long = System.currentTimeMillis()) = withContext(Dispatchers.IO) {
+        recordThreatUpdateResultSync(rulesCount, timestamp)
+        context.dataStore.edit { preferences ->
+            preferences[KEY_LAST_THREAT_UPDATE_TIMESTAMP] = timestamp
+            preferences[KEY_LAST_THREAT_UPDATE_RULES_COUNT] = rulesCount
         }
     }
 }

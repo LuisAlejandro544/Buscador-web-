@@ -150,5 +150,11 @@ Este archivo proporciona el contexto fundamental del proyecto para cualquier mod
     - **Pantalla de Alerta Crítica (`ThreatBlockedScreen.kt`):** Pantalla carmesí Material 3 que desglosa la categoría del ataque, la URL maliciosa, el feed responsable y ofrece dos acciones: botón de regreso seguro (cerrar o ir a Home) o ingreso excepcional bajo propio riesgo (Bypass domain).
     - **Pantalla de Administración y Métricas (`SecurityThreatScreen.kt`):** Vista dedicada para conmutar el escudo, revisar el contador histórico de ataques bloqueados y descargar/sincronizar en caliente las listas hacia el motor Rust.
 
+18. **Sincronización en Segundo Plano y Notificaciones Transparentes (Jetpack WorkManager):**
+    - **Planificador de Tareas (`ThreatShieldUpdateScheduler.kt`):** Configura un trabajo periódico (`PeriodicWorkRequest`) con frecuencia de 24 horas usando `WorkManager` con política `ExistingPeriodicWorkPolicy.KEEP`.
+    - **Restricciones de Hardware y Batería:** Exige `setRequiresBatteryNotLow(true)` para no agotar la batería del teléfono. La restricción de red conmuta entre `NetworkType.CONNECTED` y `NetworkType.UNMETERED` (solo Wi-Fi) según la preferencia del usuario en DataStore.
+    - **Trabajador en Segundo Plano (`ThreatShieldUpdateWorker.kt`):** Hereda de `CoroutineWorker`. Descarga asíncronamente las fuentes remotas, inyecta las firmas filtradas en el motor nativo Rust mediante `NativeBridge.addFilterRules(rulesText)` y persiste las métricas de sincronización.
+    - **Notificación Discreta y Transparente (`ThreatShieldNotificationHelper.kt`):** Notificación en canal dedicado con `NotificationManager.IMPORTANCE_LOW` (sin sonido ni vibración). Informa detalladamente: "X motores de ciberseguridad sincronizados y Y nuevas firmas añadidas". Cumple con la directiva de total transparencia sin abrumar ni interrumpir al usuario mientras usa su teléfono móvil.
+
 
 

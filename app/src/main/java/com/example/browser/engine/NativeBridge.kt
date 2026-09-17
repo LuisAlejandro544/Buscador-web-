@@ -125,7 +125,7 @@ object NativeBridge {
      */
     fun addFilterRules(rules: String): Int {
         if (rules.isBlank()) return 0
-        val count = if (isLoaded) {
+        return if (isLoaded) {
             try {
                 addFilterRulesNative(rules)
             } catch (_: Throwable) {
@@ -134,8 +134,6 @@ object NativeBridge {
         } else {
             FallbackFilterEngine.addRules(rules)
         }
-        FallbackFilterEngine.addRules(rules)
-        return count
     }
 
     /**
@@ -156,45 +154,70 @@ object NativeBridge {
     /**
      * Motor de filtrado de respaldo en Kotlin para entornos donde la biblioteca nativa
      * .so no esté cargada o en pruebas unitarias JVM / Robolectric.
+     * Implementa conjuntos concurrentes e indexación O(1) de host para evitar bloqueos del hilo principal.
      */
     object FallbackFilterEngine {
         var isReady = true
-        private val blockedDomains = mutableSetOf(
-            "doubleclick.net",
-            "google-analytics.com",
-            "googlesyndication.com",
-            "googleadservices.com",
-            "adservice.google.com",
-            "facebook.com/tr",
-            "outbrain.com",
-            "taboola.com",
-            "adnxs.com",
-            "rubiconproject.com",
-            "criteo.com",
-            "scorecardresearch.com",
-            "quantserve.com",
-            "hotjar.com",
-            "chartbeat.com",
-            "testsafebrowsing.appspot.com",
-            "malware-traffic-analysis.net",
-            "cybercrime-tracker.net",
-            "vxvault.net",
-            "openphish.com",
-            "phishtank.org",
-            "urlhaus-api.abuse.ch",
-            "malware-test.org",
-            "phishing-test.org",
-            "botnet-tracker.org"
-        )
+        private val blockedDomains = java.util.concurrent.ConcurrentHashMap.newKeySet<String>().apply {
+            addAll(
+                listOf(
+                    "doubleclick.net",
+                    "google-analytics.com",
+                    "googlesyndication.com",
+                    "googleadservices.com",
+                    "adservice.google.com",
+                    "facebook.com",
+                    "outbrain.com",
+                    "taboola.com",
+                    "adnxs.com",
+                    "rubiconproject.com",
+                    "criteo.com",
+                    "scorecardresearch.com",
+                    "quantserve.com",
+                    "hotjar.com",
+                    "chartbeat.com",
+                    "testsafebrowsing.appspot.com",
+                    "malware-traffic-analysis.net",
+                    "cybercrime-tracker.net",
+                    "vxvault.net",
+                    "openphish.com",
+                    "phishtank.org",
+                    "urlhaus-api.abuse.ch",
+                    "malware-test.org",
+                    "phishing-test.org",
+                    "botnet-tracker.org"
+                )
+            )
+        }
         private var blockedCount = 0L
         private var allowedCount = 0L
 
+        private fun extractHost(url: String): String {
+            val lower = url.trim().lowercase()
+            val withoutScheme = if (lower.contains("://")) {
+                lower.substringAfter("://")
+            } else {
+                lower
+            }
+            return withoutScheme.substringBefore('/').substringBefore(':').substringBefore('?')
+        }
+
         fun shouldBlock(url: String): Boolean {
-            val lower = url.lowercase()
-            for (domain in blockedDomains) {
-                if (lower.contains(domain)) {
+            val host = extractHost(url)
+            if (host.isNotEmpty()) {
+                if (blockedDomains.contains(host)) {
                     blockedCount++
                     return true
+                }
+                // Verificación eficiente de subdominios: tracker.ads.example.com -> ads.example.com -> example.com
+                var dotIndex = host.indexOf('.')
+                while (dotIndex != -1 && dotIndex < host.length - 1) {
+                    val parent = host.substring(dotIndex + 1)
+                    if (blockedDomains.contains(parent)) {
+                        blockedCount++
+                        return true
+                    }
+                    dotIndex = host.indexOf('.', dotIndex + 1)
                 }
             }
             allowedCount++
@@ -202,22 +225,32 @@ object NativeBridge {
         }
 
         fun addRules(rules: String): Int {
-            var count = 0
+            if (rules.isBlank()) return blockedDomains.size
+            val batch = ArrayList<String>(2048)
             rules.lineSequence().forEach { rawLine ->
                 val line = rawLine.trim()
                 if (line.isNotEmpty() && !line.startsWith("!") && !line.startsWith("#")) {
-                    val clean = line.removePrefix("||").removeSuffix("^").trim()
-                    if (clean.isNotEmpty()) {
-                        blockedDomains.add(clean.lowercase())
-                        count++
+                    var clean = line.removePrefix("||").removeSuffix("^").trim()
+                    if (clean.startsWith("0.0.0.0 ") || clean.startsWith("127.0.0.1 ")) {
+                        clean = clean.substringAfter(" ").trim()
+                    }
+                    if (clean.isNotEmpty() && !clean.contains(" ") && !clean.contains("/")) {
+                        batch.add(clean.lowercase())
+                        if (batch.size >= 2048) {
+                            blockedDomains.addAll(batch)
+                            batch.clear()
+                        }
                     }
                 }
+            }
+            if (batch.isNotEmpty()) {
+                blockedDomains.addAll(batch)
             }
             return blockedDomains.size
         }
 
         fun getStatsJson(): String {
-            return """{"rules_count":${blockedDomains.size},"blocked_count":$blockedCount,"allowed_count":$allowedCount,"is_ready":true,"version":"Fallback-Filter-v1.0"}"""
+            return """{"rules_count":${blockedDomains.size},"blocked_count":$blockedCount,"allowed_count":$allowedCount,"is_ready":true,"version":"Fallback-Filter-v2.0-Concurrent"}"""
         }
     }
 }

@@ -6,6 +6,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -20,6 +22,7 @@ import java.io.StringWriter
  *
  * Almacena los informes en un archivo JSON interno seguro en almacenamiento privado (`filesDir/crash_reports.json`)
  * manteniendo un historial de los últimos 50 incidentes listos para copiar al portapapeles.
+ * Proporciona métodos reactivos y asíncronos en Dispatchers.IO para evitar bloqueos en el hilo principal.
  */
 object CrashLogManager {
 
@@ -29,6 +32,9 @@ object CrashLogManager {
 
     @Volatile
     private var currentNavigatingUrl: String? = null
+
+    @Volatile
+    private var cachedReports: List<CrashReport>? = null
 
     /**
      * Actualiza la URL actualmente activa en el navegador para enriquecer los informes de fallo.
@@ -61,6 +67,18 @@ object CrashLogManager {
 
         saveReport(context, report)
         return report
+    }
+
+    /**
+     * Registra una caída del proceso de renderizado web de GeckoView o una matanza por OOM de forma asíncrona.
+     */
+    suspend fun recordGeckoCrashAsync(
+        context: Context,
+        url: String?,
+        isOom: Boolean,
+        consecutiveCount: Int
+    ): CrashReport = withContext(Dispatchers.IO) {
+        recordGeckoCrash(context, url, isOom, consecutiveCount)
     }
 
     /**
@@ -139,7 +157,7 @@ object CrashLogManager {
     }
 
     /**
-     * Guarda el informe en el archivo persistente JSON local.
+     * Guarda el informe en el archivo persistente JSON local y actualiza la caché en memoria.
      */
     @Synchronized
     private fun saveReport(context: Context, report: CrashReport) {
@@ -176,23 +194,47 @@ object CrashLogManager {
             }
 
             file.writeText(newArray.toString())
+
+            // Actualizar caché en memoria
+            val currentCached = cachedReports?.toMutableList() ?: mutableListOf()
+            currentCached.add(0, report)
+            if (currentCached.size > MAX_REPORTS) {
+                cachedReports = currentCached.take(MAX_REPORTS)
+            } else {
+                cachedReports = currentCached
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error persistiendo informe de fallo: ${e.message}", e)
         }
     }
 
     /**
-     * Recupera todos los informes registrados desde el almacenamiento local.
+     * Recupera todos los informes registrados desde un hilo secundario (Dispatchers.IO).
+     */
+    suspend fun getAllReportsAsync(context: Context): List<CrashReport> = withContext(Dispatchers.IO) {
+        getAllReports(context)
+    }
+
+    /**
+     * Recupera todos los informes registrados desde el almacenamiento local o caché en memoria.
      */
     @Synchronized
     fun getAllReports(context: Context): List<CrashReport> {
+        cachedReports?.let { return it }
+
         val list = mutableListOf<CrashReport>()
         try {
             val file = File(context.filesDir, CRASH_FILE_NAME)
-            if (!file.exists()) return emptyList()
+            if (!file.exists()) {
+                cachedReports = emptyList()
+                return emptyList()
+            }
 
             val content = file.readText()
-            if (content.isBlank()) return emptyList()
+            if (content.isBlank()) {
+                cachedReports = emptyList()
+                return emptyList()
+            }
 
             val jsonArray = JSONArray(content)
             for (i in 0 until jsonArray.length()) {
@@ -223,7 +265,15 @@ object CrashLogManager {
         } catch (e: Exception) {
             Log.e(TAG, "Error leyendo informes de fallo: ${e.message}", e)
         }
+        cachedReports = list
         return list
+    }
+
+    /**
+     * Elimina todos los informes de forma asíncrona fuera del hilo de interfaz.
+     */
+    suspend fun clearReportsAsync(context: Context): Boolean = withContext(Dispatchers.IO) {
+        clearReports(context)
     }
 
     /**
@@ -231,6 +281,7 @@ object CrashLogManager {
      */
     @Synchronized
     fun clearReports(context: Context): Boolean {
+        cachedReports = emptyList()
         return try {
             val file = File(context.filesDir, CRASH_FILE_NAME)
             if (file.exists()) file.delete() else true

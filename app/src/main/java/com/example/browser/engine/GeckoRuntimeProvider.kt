@@ -1,6 +1,8 @@
 package com.example.browser.engine
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.mozilla.geckoview.ContentBlocking
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
@@ -24,8 +26,62 @@ import java.io.File
  */
 object GeckoRuntimeProvider {
 
+    private const val CONFIG_FILE_NAME = "geckoview-privacy-config.yaml"
+
+    private const val CONFIG_YAML_CONTENT = """
+prefs:
+  privacy.resistFingerprinting: false
+  privacy.resistFingerprinting.letterboxing: false
+  privacy.trackingprotection.fingerprinting.enabled: true
+  privacy.trackingprotection.cryptomining.enabled: true
+  privacy.trackingprotection.socialtracking.enabled: true
+  media.peerconnection.enabled: true
+  media.peerconnection.ice.no_host: true
+  media.peerconnection.ice.default_address_only: true
+  media.navigator.enabled: true
+  network.cookie.cookieBehavior: 5
+  privacy.partition.network_state: true
+  privacy.firstparty.isolate: false
+  privacy.query_stripping.enabled: false
+  privacy.query_stripping.enabled.pbmode: false
+  dom.battery.enabled: false
+  dom.gamepad.enabled: false
+  dom.netinfo.enabled: true
+  browser.cache.memory.enable: true
+  browser.cache.memory.capacity: 32768
+  image.mem.surfacecache.max_size_kb: 32768
+  javascript.options.mem.gc_frequency: 20
+  dom.ipc.processHangMonitor: false
+  extensions.webextensions.background-delayed-startup: true
+"""
+
     @Volatile
     private var instance: GeckoRuntime? = null
+
+    /**
+     * Prepara de forma asíncrona en un hilo secundario (Dispatchers.IO) el archivo de configuración
+     * de privacidad y precalienta el entorno de ejecución para evitar cualquier micro-parón en la UI.
+     */
+    suspend fun warmup(context: Context) = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        ensureConfigFile(appContext)
+        get(appContext)
+    }
+
+    /**
+     * Garantiza la existencia del archivo de configuración sin reescribirlo innecesariamente si ya existe.
+     */
+    private fun ensureConfigFile(appContext: Context): File {
+        val configFile = File(appContext.filesDir, CONFIG_FILE_NAME)
+        try {
+            if (!configFile.exists() || configFile.length() == 0L) {
+                configFile.writeText(CONFIG_YAML_CONTENT.trimIndent())
+            }
+        } catch (_: Throwable) {
+            // Manejo preventivo si hay fallo de I/O en disco
+        }
+        return configFile
+    }
 
     /**
      * Obtiene o inicializa la instancia compartida de GeckoRuntime.
@@ -45,40 +101,7 @@ object GeckoRuntimeProvider {
      * Construye la configuración de alto rendimiento y privacidad avanzada para GeckoView.
      */
     private fun createRuntime(appContext: Context): GeckoRuntime {
-        // Generar archivo de preferencias avanzadas de Gecko para compatibilidad, ETP y navegación fluida
-        val configFile = File(appContext.filesDir, "geckoview-privacy-config.yaml")
-        try {
-            configFile.writeText(
-                """
-                prefs:
-                  privacy.resistFingerprinting: false
-                  privacy.resistFingerprinting.letterboxing: false
-                  privacy.trackingprotection.fingerprinting.enabled: true
-                  privacy.trackingprotection.cryptomining.enabled: true
-                  privacy.trackingprotection.socialtracking.enabled: true
-                  media.peerconnection.enabled: true
-                  media.peerconnection.ice.no_host: true
-                  media.peerconnection.ice.default_address_only: true
-                  media.navigator.enabled: true
-                  network.cookie.cookieBehavior: 5
-                  privacy.partition.network_state: true
-                  privacy.firstparty.isolate: false
-                  privacy.query_stripping.enabled: false
-                  privacy.query_stripping.enabled.pbmode: false
-                  dom.battery.enabled: false
-                  dom.gamepad.enabled: false
-                  dom.netinfo.enabled: true
-                  browser.cache.memory.enable: true
-                  browser.cache.memory.capacity: 32768
-                  image.mem.surfacecache.max_size_kb: 32768
-                  javascript.options.mem.gc_frequency: 20
-                  dom.ipc.processHangMonitor: false
-                  extensions.webextensions.background-delayed-startup: true
-                """.trimIndent()
-            )
-        } catch (_: Throwable) {
-            // Manejo preventivo si hay fallo de I/O
-        }
+        val configFile = ensureConfigFile(appContext)
 
         // Configuración de bloqueo de contenido (Total Cookie Protection + ETP Estricto)
         // Manteniendo compatibilidad total con tokens de búsqueda y flujos de autenticación
@@ -110,6 +133,13 @@ object GeckoRuntimeProvider {
     }
 
     /**
+     * Purga de memoria RAM asíncrona en hilo secundario.
+     */
+    suspend fun purgeIncognitoMemoryAsync(context: Context) = withContext(Dispatchers.IO) {
+        purgeIncognitoMemory(context)
+    }
+
+    /**
      * Purga de memoria RAM inmediata y agresiva: elimina cachés temporales, sesiones
      * volátiles de autenticación y solicita la recolección de basura del sistema.
      */
@@ -122,6 +152,14 @@ object GeckoRuntimeProvider {
         } catch (_: Throwable) {}
         System.gc()
         Runtime.getRuntime().gc()
+    }
+
+    /**
+     * Limpia la memoria caché y datos de navegación de forma asíncrona en un hilo secundario.
+     */
+    suspend fun clearAllDataAsync(context: Context) = withContext(Dispatchers.IO) {
+        val runtime = get(context)
+        runtime.storageController.clearData(StorageController.ClearFlags.ALL)
     }
 
     /**

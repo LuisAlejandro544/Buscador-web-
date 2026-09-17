@@ -59,6 +59,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -148,13 +149,19 @@ fun CrashInspectorScreen(
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var reports by remember { mutableStateOf(CrashLogManager.getAllReports(context)) }
+    var reports by remember { mutableStateOf<List<CrashReport>>(emptyList()) }
     var selectedFilter by remember { mutableStateOf<CrashType?>(null) }
     var reportInDetail by remember { mutableStateOf<CrashReport?>(null) }
     var showClearDialog by remember { mutableStateOf(false) }
 
     fun refresh() {
-        reports = CrashLogManager.getAllReports(context)
+        coroutineScope.launch {
+            reports = CrashLogManager.getAllReportsAsync(context)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        reports = CrashLogManager.getAllReportsAsync(context)
     }
 
     fun copyReport(report: CrashReport) {
@@ -312,9 +319,11 @@ fun CrashInspectorScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        CrashLogManager.clearReports(context)
-                        refresh()
-                        showClearDialog = false
+                        coroutineScope.launch {
+                            CrashLogManager.clearReportsAsync(context)
+                            refresh()
+                            showClearDialog = false
+                        }
                     }
                 ) {
                     Text("Borrar Todo", color = MaterialTheme.colorScheme.error)

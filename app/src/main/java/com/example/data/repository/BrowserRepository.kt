@@ -1,5 +1,6 @@
 package com.example.data.repository
 
+import androidx.annotation.WorkerThread
 import com.example.data.local.dao.BookmarkDao
 import com.example.data.local.dao.CookieDao
 import com.example.data.local.dao.DownloadDao
@@ -16,12 +17,14 @@ import com.example.data.local.entity.TabEntity
 import com.example.data.local.entity.UserAccountEntity
 import com.example.data.model.SearchEngine
 import com.example.data.preferences.BrowserPreferences
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 
 /**
  * Repositorio central de datos para el navegador web.
  * Abstrae las fuentes de datos (Room y DataStore) proporcionando una interfaz unificada
- * para el ViewModel y los controladores del navegador.
+ * y garantizando la ejecución de operaciones fuera del hilo de interfaz (UI Thread).
  */
 class BrowserRepository(
     private val tabDao: TabDao,
@@ -213,12 +216,18 @@ class BrowserRepository(
 
     fun getSitePermissionsForOrigin(origin: String): Flow<List<SitePermissionEntity>> = sitePermissionDao.getPermissionsForOrigin(origin)
 
-    suspend fun findSitePermission(origin: String, type: String): SitePermissionEntity? = sitePermissionDao.findPermission(origin, type)
+    suspend fun findSitePermission(origin: String, type: String): SitePermissionEntity? = withContext(Dispatchers.IO) {
+        sitePermissionDao.findPermission(origin, type)
+    }
 
+    /**
+     * Consulta síncrona exclusiva para hilos de fondo. No llamar desde el hilo principal de la UI.
+     */
+    @WorkerThread
     fun findSitePermissionSync(origin: String, type: String): SitePermissionEntity? = sitePermissionDao.findPermissionSync(origin, type)
 
-    suspend fun saveSitePermission(origin: String, permissionType: String, status: String): Long {
-        return sitePermissionDao.insertOrUpdate(
+    suspend fun saveSitePermission(origin: String, permissionType: String, status: String): Long = withContext(Dispatchers.IO) {
+        sitePermissionDao.insertOrUpdate(
             SitePermissionEntity(
                 origin = origin,
                 permissionType = permissionType,
@@ -228,15 +237,21 @@ class BrowserRepository(
         )
     }
 
-    suspend fun updateSitePermissionStatus(id: Long, status: String) {
+    suspend fun updateSitePermissionStatus(id: Long, status: String) = withContext(Dispatchers.IO) {
         sitePermissionDao.updateStatus(id, status, System.currentTimeMillis())
     }
 
-    suspend fun deleteSitePermission(id: Long) = sitePermissionDao.deleteById(id)
+    suspend fun deleteSitePermission(id: Long) = withContext(Dispatchers.IO) {
+        sitePermissionDao.deleteById(id)
+    }
 
-    suspend fun deleteSitePermissionsForOrigin(origin: String) = sitePermissionDao.deleteByOrigin(origin)
+    suspend fun deleteSitePermissionsForOrigin(origin: String) = withContext(Dispatchers.IO) {
+        sitePermissionDao.deleteByOrigin(origin)
+    }
 
-    suspend fun clearAllSitePermissions() = sitePermissionDao.clearAll()
+    suspend fun clearAllSitePermissions() = withContext(Dispatchers.IO) {
+        sitePermissionDao.clearAll()
+    }
 
     // --- Preferencias y Ajustes ---
     val searchEngine: Flow<SearchEngine> = preferences.searchEngine
@@ -268,4 +283,15 @@ class BrowserRepository(
     suspend fun setBlockMediaPrompts(enabled: Boolean) = preferences.setBlockMediaPrompts(enabled)
     suspend fun setSoundEffectsEnabled(enabled: Boolean) = preferences.setSoundEffectsEnabled(enabled)
     suspend fun setOnboardingCompleted(completed: Boolean) = preferences.setOnboardingCompleted(completed)
+
+    // --- Actualizaciones en Segundo Plano del Escudo de Seguridad ---
+    val isAutoUpdateThreatsEnabled: Flow<Boolean> = preferences.isAutoUpdateThreatsEnabled
+    val isThreatsUpdateOnlyWifi: Flow<Boolean> = preferences.isThreatsUpdateOnlyWifi
+    val lastThreatUpdateTimestamp: Flow<Long> = preferences.lastThreatUpdateTimestamp
+    val lastThreatUpdateRulesCount: Flow<Int> = preferences.lastThreatUpdateRulesCount
+
+    suspend fun setAutoUpdateThreatsEnabled(enabled: Boolean) = preferences.setAutoUpdateThreatsEnabled(enabled)
+    suspend fun setThreatsUpdateOnlyWifi(onlyWifi: Boolean) = preferences.setThreatsUpdateOnlyWifi(onlyWifi)
+    suspend fun recordThreatUpdateResult(rulesCount: Int, timestamp: Long = System.currentTimeMillis()) =
+        preferences.recordThreatUpdateResult(rulesCount, timestamp)
 }

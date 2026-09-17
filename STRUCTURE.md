@@ -40,6 +40,10 @@ app/src/main/
 │   │   │   └── WebExtensionModel.kt        # Modelo de estado para la interfaz en Compose
 │   │   ├── sound/
 │   │   │   └── SoundEffectManager.kt       # Gestor de efectos sonoros y háptica de baja latencia con SoundPool
+│   │   ├── security/
+│   │   │   ├── ThreatShieldNotificationHelper.kt # Gestor de notificaciones transparentes y no abrumadoras (IMPORTANCE_LOW)
+│   │   │   ├── ThreatShieldUpdateWorker.kt       # Tarea en segundo plano CoroutineWorker para descarga e inyección en Rust
+│   │   │   └── ThreatShieldUpdateScheduler.kt    # Planificador WorkManager periódico (24h) con restricciones de red y batería
 │   │   ├── engine/
 │   │   │   ├── BrowserEngineContract.kt # Interfaz abstracta que define las operaciones de navegación web
 │   │   │   ├── GeckoPromptHandler.kt    # Delegado GeckoView PromptDelegate para alertas, confirmaciones y ficheros
@@ -222,3 +226,8 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
   - **Detección Dinámica de Autenticación (`WebSignInBridge`):** Analiza en tiempo real las URLs cargadas en el motor web para identificar portales de acceso, protocolos OAuth2, OpenID Connect y botones de inicio de sesión de Google.
   - **Banner Interactivo One-Tap en Jetpack Compose (`WebSignInPromptBanner`):** Despliega un componente animado en la parte superior del navegador con la identidad activa del usuario cuando se visita un sitio web compatible.
   - **Inyección y Autocompletado en GeckoView:** Al presionar "Continuar", el navegador evalúa JavaScript en el contexto de la página para rellenar campos de correo/usuario o activar selectores de inicio de sesión de Google automáticamente.
+- **Sincronización en Segundo Plano y Notificaciones Transparentes (`ThreatShieldUpdateScheduler`, `ThreatShieldUpdateWorker` y `ThreatShieldNotificationHelper`):**
+  - **Planificación Desatendida con Jetpack WorkManager:** `ThreatShieldUpdateScheduler` encola una tarea periódica de 24 horas (`PeriodicWorkRequestBuilder`) asociada a restricciones de hardware estrictas: dispositivo con batería no baja (`setRequiresBatteryNotLow(true)`) y tipo de red configurable (cualquiera o exclusivamente Wi-Fi vía `NetworkType.UNMETERED`).
+  - **Descarga e Inyección en Tiempo de Ejecución:** `ThreatShieldUpdateWorker` consulta los repositorios mundiales de estafas y malware (PhishTank, OpenPhish, URLhaus, HaGeZi, StevenBlack) e inyecta las nuevas reglas en microsegundos dentro del motor de filtrado compilado en Rust invocando `NativeBridge.addFilterRules()`.
+  - **Transparencia Total sin Fricción:** `ThreatShieldNotificationHelper` crea un canal de notificaciones dedicado de importancia baja (`IMPORTANCE_LOW`). La notificación informa al usuario exactamente cuántas firmas nuevas se añadieron y cuántos motores se sincronizaron, sin emitir sonidos molestos ni vibraciones que interrumpan la actividad del usuario en el teléfono.
+

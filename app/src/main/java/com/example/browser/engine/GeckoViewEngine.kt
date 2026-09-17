@@ -5,9 +5,13 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
+import androidx.lifecycle.viewModelScope
 import com.example.browser.debug.CrashLogManager
 import com.example.data.local.entity.SitePermissionEntity
 import com.example.viewmodel.BrowserViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
@@ -215,9 +219,11 @@ class GeckoViewEngine(
                 }
                 lastCrashTimestamp = now
 
-                // Registrar el incidente de renderizado en el Crash Inspector
+                // Registrar el incidente de renderizado en el Crash Inspector en un hilo de fondo
                 val currentUrl = viewModel.pageState.value.url
-                CrashLogManager.recordGeckoCrash(context, currentUrl, isOom = false, consecutiveCrashCount)
+                viewModel.viewModelScope.launch(Dispatchers.IO) {
+                    CrashLogManager.recordGeckoCrash(context, currentUrl, isOom = false, consecutiveCrashCount)
+                }
 
                 if (consecutiveCrashCount <= 2) {
                     try { s.reload() } catch (_: Throwable) {}
@@ -235,9 +241,11 @@ class GeckoViewEngine(
                 }
                 lastCrashTimestamp = now
 
-                // Registrar la matanza por falta de memoria (OOM) en el Crash Inspector
+                // Registrar la matanza por falta de memoria (OOM) en el Crash Inspector en un hilo de fondo
                 val currentUrl = viewModel.pageState.value.url
-                CrashLogManager.recordGeckoCrash(context, currentUrl, isOom = true, consecutiveCrashCount)
+                viewModel.viewModelScope.launch(Dispatchers.IO) {
+                    CrashLogManager.recordGeckoCrash(context, currentUrl, isOom = true, consecutiveCrashCount)
+                }
 
                 if (consecutiveCrashCount <= 2) {
                     try { s.reload() } catch (_: Throwable) {}
@@ -283,67 +291,72 @@ class GeckoViewEngine(
                 val hasVideo = !video.isNullOrEmpty()
                 val hasAudio = !audio.isNullOrEmpty()
 
-                // 2. Comprobar permisos persistentes almacenados en la base de datos
-                val videoPerm = if (hasVideo) viewModel.findSitePermissionSync(origin, SitePermissionEntity.PERMISSION_CAMERA) else null
-                val audioPerm = if (hasAudio) viewModel.findSitePermissionSync(origin, SitePermissionEntity.PERMISSION_MICROPHONE) else null
+                // 2. Comprobar permisos persistentes de forma asíncrona en Dispatchers.IO para no bloquear la UI
+                viewModel.viewModelScope.launch {
+                    val (videoPerm, audioPerm) = withContext(Dispatchers.IO) {
+                        val v = if (hasVideo) viewModel.findSitePermission(origin, SitePermissionEntity.PERMISSION_CAMERA) else null
+                        val a = if (hasAudio) viewModel.findSitePermission(origin, SitePermissionEntity.PERMISSION_MICROPHONE) else null
+                        Pair(v, a)
+                    }
 
-                // Si alguno está explícitamente bloqueado, rechazar
-                if ((hasVideo && videoPerm?.status == SitePermissionEntity.STATUS_DENIED) ||
-                    (hasAudio && audioPerm?.status == SitePermissionEntity.STATUS_DENIED)
-                ) {
-                    callback.reject()
-                    return
-                }
+                    // Si alguno está explícitamente bloqueado, rechazar
+                    if ((hasVideo && videoPerm?.status == SitePermissionEntity.STATUS_DENIED) ||
+                        (hasAudio && audioPerm?.status == SitePermissionEntity.STATUS_DENIED)
+                    ) {
+                        callback.reject()
+                        return@launch
+                    }
 
-                // Si ambos están permitidos explícitamente, conceder de inmediato
-                val isVideoSatisfied = !hasVideo || videoPerm?.status == SitePermissionEntity.STATUS_GRANTED
-                val isAudioSatisfied = !hasAudio || audioPerm?.status == SitePermissionEntity.STATUS_GRANTED
-                if (isVideoSatisfied && isAudioSatisfied && (videoPerm != null || audioPerm != null)) {
-                    callback.grant(video?.firstOrNull(), audio?.firstOrNull())
-                    return
-                }
+                    // Si ambos están permitidos explícitamente, conceder de inmediato
+                    val isVideoSatisfied = !hasVideo || videoPerm?.status == SitePermissionEntity.STATUS_GRANTED
+                    val isAudioSatisfied = !hasAudio || audioPerm?.status == SitePermissionEntity.STATUS_GRANTED
+                    if (isVideoSatisfied && isAudioSatisfied && (videoPerm != null || audioPerm != null)) {
+                        callback.grant(video?.firstOrNull(), audio?.firstOrNull())
+                        return@launch
+                    }
 
-                // 3. No decidido previamente: Mostrar diálogo interactivo nativo al usuario
-                val permType = if (hasVideo && hasAudio) {
-                    SitePermissionEntity.PERMISSION_CAMERA
-                } else if (hasVideo) {
-                    SitePermissionEntity.PERMISSION_CAMERA
-                } else {
-                    SitePermissionEntity.PERMISSION_MICROPHONE
-                }
+                    // 3. No decidido previamente: Mostrar diálogo interactivo nativo al usuario
+                    val permType = if (hasVideo && hasAudio) {
+                        SitePermissionEntity.PERMISSION_CAMERA
+                    } else if (hasVideo) {
+                        SitePermissionEntity.PERMISSION_CAMERA
+                    } else {
+                        SitePermissionEntity.PERMISSION_MICROPHONE
+                    }
 
-                val mediaLabel = if (hasVideo && hasAudio) {
-                    "la cámara y el micrófono"
-                } else if (hasVideo) {
-                    "la cámara"
-                } else {
-                    "el micrófono"
-                }
+                    val mediaLabel = if (hasVideo && hasAudio) {
+                        "la cámara y el micrófono"
+                    } else if (hasVideo) {
+                        "la cámara"
+                    } else {
+                        "el micrófono"
+                    }
 
-                viewModel.postWebPrompt(
-                    WebPromptRequest.Permission(
-                        origin = origin,
-                        permissionType = permType,
-                        title = "Permiso de multimedia",
-                        message = "El sitio \"$origin\" solicita acceso a $mediaLabel.",
-                        onGrant = { remember ->
-                            if (remember) {
-                                if (hasVideo) viewModel.saveSitePermission(origin, SitePermissionEntity.PERMISSION_CAMERA, SitePermissionEntity.STATUS_GRANTED)
-                                if (hasAudio) viewModel.saveSitePermission(origin, SitePermissionEntity.PERMISSION_MICROPHONE, SitePermissionEntity.STATUS_GRANTED)
+                    viewModel.postWebPrompt(
+                        WebPromptRequest.Permission(
+                            origin = origin,
+                            permissionType = permType,
+                            title = "Permiso de multimedia",
+                            message = "El sitio \"$origin\" solicita acceso a $mediaLabel.",
+                            onGrant = { remember ->
+                                if (remember) {
+                                    if (hasVideo) viewModel.saveSitePermission(origin, SitePermissionEntity.PERMISSION_CAMERA, SitePermissionEntity.STATUS_GRANTED)
+                                    if (hasAudio) viewModel.saveSitePermission(origin, SitePermissionEntity.PERMISSION_MICROPHONE, SitePermissionEntity.STATUS_GRANTED)
+                                }
+                                callback.grant(video?.firstOrNull(), audio?.firstOrNull())
+                                viewModel.dismissWebPrompt()
+                            },
+                            onDeny = { remember ->
+                                if (remember) {
+                                    if (hasVideo) viewModel.saveSitePermission(origin, SitePermissionEntity.PERMISSION_CAMERA, SitePermissionEntity.STATUS_DENIED)
+                                    if (hasAudio) viewModel.saveSitePermission(origin, SitePermissionEntity.PERMISSION_MICROPHONE, SitePermissionEntity.STATUS_DENIED)
+                                }
+                                callback.reject()
+                                viewModel.dismissWebPrompt()
                             }
-                            callback.grant(video?.firstOrNull(), audio?.firstOrNull())
-                            viewModel.dismissWebPrompt()
-                        },
-                        onDeny = { remember ->
-                            if (remember) {
-                                if (hasVideo) viewModel.saveSitePermission(origin, SitePermissionEntity.PERMISSION_CAMERA, SitePermissionEntity.STATUS_DENIED)
-                                if (hasAudio) viewModel.saveSitePermission(origin, SitePermissionEntity.PERMISSION_MICROPHONE, SitePermissionEntity.STATUS_DENIED)
-                            }
-                            callback.reject()
-                            viewModel.dismissWebPrompt()
-                        }
+                        )
                     )
-                )
+                }
             }
 
             override fun onContentPermissionRequest(
@@ -384,47 +397,54 @@ class GeckoViewEngine(
                     return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
                 }
 
-                // 2. Verificar decisión previa almacenada en Room
-                val existing = viewModel.findSitePermissionSync(origin, permType)
-                if (existing != null) {
-                    return if (existing.status == SitePermissionEntity.STATUS_GRANTED) {
-                        GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW)
-                    } else {
-                        GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
-                    }
-                }
-
-                // 3. No decidido: Mostrar diálogo de solicitud interactivo
+                // 2. Crear resultado asíncrono y consultar la base de datos fuera del hilo principal
                 val result = GeckoResult<Int>()
-                val permDescription = when (perm.permission) {
-                    GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION -> "enviarte notificaciones web"
-                    GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION -> "conocer tu ubicación geográfica"
-                    GeckoSession.PermissionDelegate.PERMISSION_PERSISTENT_STORAGE -> "usar almacenamiento persistente en el dispositivo"
-                    else -> "acceder a funciones del dispositivo"
-                }
 
-                viewModel.postWebPrompt(
-                    WebPromptRequest.Permission(
-                        origin = origin,
-                        permissionType = permType,
-                        title = "Solicitud de permiso",
-                        message = "El sitio \"$origin\" solicita permiso para $permDescription.",
-                        onGrant = { remember ->
-                            if (remember) {
-                                viewModel.saveSitePermission(origin, permType, SitePermissionEntity.STATUS_GRANTED)
-                            }
+                viewModel.viewModelScope.launch {
+                    val existing = withContext(Dispatchers.IO) {
+                        viewModel.findSitePermission(origin, permType)
+                    }
+
+                    if (existing != null) {
+                        if (existing.status == SitePermissionEntity.STATUS_GRANTED) {
                             result.complete(GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW)
-                            viewModel.dismissWebPrompt()
-                        },
-                        onDeny = { remember ->
-                            if (remember) {
-                                viewModel.saveSitePermission(origin, permType, SitePermissionEntity.STATUS_DENIED)
-                            }
+                        } else {
                             result.complete(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
-                            viewModel.dismissWebPrompt()
                         }
+                        return@launch
+                    }
+
+                    // 3. No decidido: Mostrar diálogo de solicitud interactivo
+                    val permDescription = when (perm.permission) {
+                        GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION -> "enviarte notificaciones web"
+                        GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION -> "conocer tu ubicación geográfica"
+                        GeckoSession.PermissionDelegate.PERMISSION_PERSISTENT_STORAGE -> "usar almacenamiento persistente en el dispositivo"
+                        else -> "acceder a funciones del dispositivo"
+                    }
+
+                    viewModel.postWebPrompt(
+                        WebPromptRequest.Permission(
+                            origin = origin,
+                            permissionType = permType,
+                            title = "Solicitud de permiso",
+                            message = "El sitio \"$origin\" solicita permiso para $permDescription.",
+                            onGrant = { remember ->
+                                if (remember) {
+                                    viewModel.saveSitePermission(origin, permType, SitePermissionEntity.STATUS_GRANTED)
+                                }
+                                result.complete(GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW)
+                                viewModel.dismissWebPrompt()
+                            },
+                            onDeny = { remember ->
+                                if (remember) {
+                                    viewModel.saveSitePermission(origin, permType, SitePermissionEntity.STATUS_DENIED)
+                                }
+                                result.complete(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
+                                viewModel.dismissWebPrompt()
+                            }
+                        )
                     )
-                )
+                }
 
                 return result
             }

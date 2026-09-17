@@ -3,14 +3,19 @@ package com.example.viewmodel.delegates
 import android.content.Context
 import android.net.Uri
 import com.example.browser.engine.NativeBridge
+import com.example.browser.security.ThreatShieldNotificationHelper
+import com.example.browser.security.ThreatShieldUpdateScheduler
+import com.example.data.repository.BrowserRepository
 import com.example.model.BlockedThreatDetail
 import com.example.model.SecurityThreatFeed
 import com.example.model.ThreatCategory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -27,16 +32,30 @@ import java.util.concurrent.TimeUnit
  * - Gestionar feeds de amenazas mundiales (URLhaus de Abuse.ch, PhishTank, OpenPhish, HaGeZi).
  * - Interceptar URLs sospechosas o maliciosas antes de la navegación mediante el motor Rust (core-native).
  * - Clasificar amenazas (Phishing bancario, Malware/Troyanos, Fraude web, Rastreador invasivo).
- * - Notificar a la UI para desplegar la pantalla de advertencia [ThreatBlockedScreen].
+ * - Orquestar la sincronización periódica en segundo plano vía WorkManager notificando al usuario de forma transparente.
  * - Permitir excepciones temporales ("ignorar y continuar") cuando el usuario lo decida conscientemente.
  */
 class ThreatProtectionDelegate(
     private val context: Context,
+    private val repository: BrowserRepository,
     private val scope: CoroutineScope
 ) {
     // Interruptor maestro de protección web en tiempo real
     private val _isThreatShieldEnabled = MutableStateFlow(true)
     val isThreatShieldEnabled: StateFlow<Boolean> = _isThreatShieldEnabled.asStateFlow()
+
+    // Preferencias reactivas de sincronización esporádica en segundo plano
+    val isAutoUpdateThreatsEnabled: StateFlow<Boolean> = repository.isAutoUpdateThreatsEnabled
+        .stateIn(scope, SharingStarted.Eagerly, true)
+
+    val isThreatsUpdateOnlyWifi: StateFlow<Boolean> = repository.isThreatsUpdateOnlyWifi
+        .stateIn(scope, SharingStarted.Eagerly, false)
+
+    val lastThreatUpdateTimestamp: StateFlow<Long> = repository.lastThreatUpdateTimestamp
+        .stateIn(scope, SharingStarted.Eagerly, 0L)
+
+    val lastThreatUpdateRulesCount: StateFlow<Int> = repository.lastThreatUpdateRulesCount
+        .stateIn(scope, SharingStarted.Eagerly, 0)
 
     // Conteo de amenazas de malware y phishing bloqueadas
     private val _blockedThreatsCount = MutableStateFlow(0L)
@@ -184,7 +203,7 @@ class ThreatProtectionDelegate(
         _isUpdatingFeeds.value = true
         _feedUpdateStatus.value = "Sincronizando bases de datos mundiales contra malware y phishing..."
 
-        scope.launch {
+        scope.launch(Dispatchers.Default) {
             var totalNewRules = 0
             var successCount = 0
 
@@ -208,7 +227,7 @@ class ThreatProtectionDelegate(
                     }
 
                     if (rulesText.isNotBlank()) {
-                        // Inyectar directamente en el motor nativo Rust compilado
+                        // Inyectar directamente en el motor nativo Rust compilado en un hilo de trabajo (Dispatchers.Default)
                         val count = NativeBridge.addFilterRules(rulesText)
                         totalNewRules += count
                         successCount++
@@ -216,16 +235,55 @@ class ThreatProtectionDelegate(
                 } catch (_: Throwable) {}
             }
 
-            if (successCount > 0) {
-                _feedUpdateStatus.value = "¡Protección actualizada! $successCount motores activos con reglas de seguridad sincronizadas."
-                onComplete?.invoke(true, totalNewRules)
-            } else {
-                _feedUpdateStatus.value = "No fue posible conectar con los servidores de amenazas. Verifica tu conexión."
-                onComplete?.invoke(false, 0)
+            withContext(Dispatchers.Main) {
+                if (successCount > 0) {
+                    _feedUpdateStatus.value = "¡Protección actualizada! $successCount motores activos con reglas de seguridad sincronizadas."
+                    scope.launch { repository.recordThreatUpdateResult(totalNewRules, System.currentTimeMillis()) }
+                    onComplete?.invoke(true, totalNewRules)
+                } else {
+                    _feedUpdateStatus.value = "No fue posible conectar con los servidores de amenazas. Verifica tu conexión."
+                    onComplete?.invoke(false, 0)
+                }
+                _isUpdatingFeeds.value = false
             }
-
-            _isUpdatingFeeds.value = false
         }
+    }
+
+    /**
+     * Activa o desactiva la sincronización esporádica en segundo plano vía WorkManager.
+     */
+    fun toggleAutoUpdateThreats(enabled: Boolean) {
+        scope.launch {
+            repository.setAutoUpdateThreatsEnabled(enabled)
+            ThreatShieldUpdateScheduler.schedulePeriodicUpdates(
+                context = context,
+                enabled = enabled,
+                onlyWifi = isThreatsUpdateOnlyWifi.value
+            )
+        }
+    }
+
+    /**
+     * Define si la sincronización en segundo plano debe realizarse únicamente con Wi-Fi.
+     */
+    fun toggleThreatsUpdateOnlyWifi(onlyWifi: Boolean) {
+        scope.launch {
+            repository.setThreatsUpdateOnlyWifi(onlyWifi)
+            if (isAutoUpdateThreatsEnabled.value) {
+                ThreatShieldUpdateScheduler.schedulePeriodicUpdates(
+                    context = context,
+                    enabled = true,
+                    onlyWifi = onlyWifi
+                )
+            }
+        }
+    }
+
+    /**
+     * Dispara una comprobación manual inmediata en segundo plano para verificar el flujo completo.
+     */
+    fun triggerImmediateBackgroundCheck() {
+        ThreatShieldUpdateScheduler.triggerImmediateCheck(context, isThreatsUpdateOnlyWifi.value)
     }
 
     private fun extractDomain(url: String): String {

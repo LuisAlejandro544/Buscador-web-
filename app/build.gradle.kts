@@ -148,6 +148,7 @@ dependencies {
   implementation(libs.retrofit)
   implementation(libs.geckoview.omni)
   implementation(libs.jsoup)
+  implementation(libs.androidx.work.runtime.ktx)
   // Herramientas de depuración integradas (LeakCanary y ANR-WatchDog)
   implementation(libs.leakcanary.android)
   implementation(libs.anrwatchdog)

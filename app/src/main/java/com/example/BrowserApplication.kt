@@ -4,6 +4,9 @@ import android.app.Application
 import android.content.Intent
 import android.util.Log
 import com.example.browser.debug.CrashLogManager
+import com.example.browser.security.ThreatShieldNotificationHelper
+import com.example.browser.security.ThreatShieldUpdateScheduler
+import com.example.data.preferences.BrowserPreferences
 import com.example.ui.debug.CrashInspectorActivity
 import com.github.anrwatchdog.ANRWatchDog
 import kotlin.system.exitProcess
@@ -17,6 +20,7 @@ import kotlin.system.exitProcess
  * 2. **ANR-WatchDog:** Monitoreo en segundo plano que detecta congelamientos del hilo principal (> 5 segundos)
  *    y los archiva en el historial de incidentes.
  * 3. **LeakCanary:** Vigilancia continua de fugas de memoria en Activities, Fragments y sesiones web.
+ * 4. **Escudo de Seguridad Periódico:** Actualizaciones automáticas de listas de amenazas en segundo plano con WorkManager.
  */
 class BrowserApplication : Application() {
 
@@ -29,6 +33,26 @@ class BrowserApplication : Application() {
         super.onCreate()
         setupCrashHandler()
         setupAnrWatchdog()
+        setupThreatShieldScheduler()
+    }
+
+    /**
+     * Inicializa el canal de notificaciones y la sincronización periódica de listas de malware y estafas.
+     */
+    private fun setupThreatShieldScheduler() {
+        try {
+            ThreatShieldNotificationHelper.createNotificationChannel(this)
+            val preferences = BrowserPreferences(this)
+            val isEnabled = preferences.isAutoUpdateThreatsEnabledSync()
+            val onlyWifi = preferences.isThreatsUpdateOnlyWifiSync()
+            ThreatShieldUpdateScheduler.schedulePeriodicUpdates(
+                context = this,
+                enabled = isEnabled,
+                onlyWifi = onlyWifi
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error configurando planificador de amenazas: ${e.message}", e)
+        }
     }
 
     /**

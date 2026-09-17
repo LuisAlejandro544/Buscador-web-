@@ -23,12 +23,15 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Dangerous
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Phishing
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ReportProblem
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -38,6 +41,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -56,6 +60,9 @@ import androidx.compose.ui.unit.sp
 import com.example.model.SecurityThreatFeed
 import com.example.model.ThreatCategory
 import com.example.viewmodel.BrowserViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Pantalla dedicada de Configuración y Estado del Escudo Anti-Phishing y Malware.
@@ -77,6 +84,12 @@ fun SecurityThreatScreen(
     val isUpdatingFeeds by viewModel.isUpdatingThreatFeeds.collectAsState()
     val feedUpdateStatus by viewModel.threatFeedUpdateStatus.collectAsState()
     val threatFeeds by viewModel.threatFeeds.collectAsState()
+
+    // Estados de sincronización en segundo plano con WorkManager
+    val isAutoUpdateEnabled by viewModel.isAutoUpdateThreatsEnabled.collectAsState()
+    val isOnlyWifi by viewModel.isThreatsUpdateOnlyWifi.collectAsState()
+    val lastUpdateTimestamp by viewModel.lastThreatUpdateTimestamp.collectAsState()
+    val lastUpdateRulesCount by viewModel.lastThreatUpdateRulesCount.collectAsState()
 
     val securityCrimson = Color(0xFFC62828)
     val securityEmerald = Color(0xFF00897B)
@@ -303,6 +316,150 @@ fun SecurityThreatScreen(
                             color = securityEmerald,
                             fontWeight = FontWeight.Medium
                         )
+                    }
+                }
+            }
+
+            // Sección de Actualización Automática y Notificaciones Transparentes
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .background(securityEmerald.copy(alpha = 0.15f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.NotificationsActive,
+                                        contentDescription = null,
+                                        tint = securityEmerald,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Actualización en Segundo Plano",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = if (isAutoUpdateEnabled) "Activo con notificaciones discretas" else "Sincronización automática inactiva",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isAutoUpdateEnabled) securityEmerald else Color.Gray
+                                    )
+                                }
+                            }
+
+                            Switch(
+                                checked = isAutoUpdateEnabled,
+                                onCheckedChange = { viewModel.toggleAutoUpdateThreats(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = securityEmerald
+                                ),
+                                modifier = Modifier.testTag("threat_auto_update_toggle")
+                            )
+                        }
+
+                        Text(
+                            text = "Descarga de forma esporádica listas de estafas bancarias y malware mediante WorkManager respetando tu batería. Siempre te mostraremos una notificación informativa sobre las firmas agregadas, sin secretos.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        AnimatedVisibility(visible = isAutoUpdateEnabled) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Wifi,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Solo mediante Wi-Fi (ahorro de datos)",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+
+                                    Switch(
+                                        checked = isOnlyWifi,
+                                        onCheckedChange = { viewModel.toggleThreatsUpdateOnlyWifi(it) },
+                                        modifier = Modifier.testTag("threat_only_wifi_toggle")
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Schedule,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (lastUpdateTimestamp > 0) {
+                                            val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(lastUpdateTimestamp))
+                                            "Última actualización: $dateStr ($lastUpdateRulesCount firmas añadidas)"
+                                        } else {
+                                            "Próxima actualización programada automáticamente cada 24h"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+
+                                OutlinedButton(
+                                    onClick = { viewModel.triggerImmediateBackgroundCheck() },
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(40.dp)
+                                        .testTag("threat_test_background_worker_button")
+                                ) {
+                                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Probar actualización en segundo plano ahora", fontSize = 13.sp)
+                                }
+                            }
+                        }
                     }
                 }
             }

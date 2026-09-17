@@ -1,4 +1,8 @@
 <resources>
     <string name="app_name">Navegador Web</string>
     <string name="crash_inspector_app_name">Crash Inspector</string>
+    <string name="threat_shield_notification_channel_name">Escudo de Seguridad Web</string>
+    <string name="threat_shield_notification_channel_desc">Notificaciones informativas sobre la actualización de filtros contra malware y estafas.</string>
+    <string name="threat_shield_notif_title">Escudo de Seguridad Actualizado</string>
+    <string name="threat_shield_notif_desc">Se sincronizaron las bases de datos contra malware y estafas bancarias.</string>
 </resources>

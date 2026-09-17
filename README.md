@@ -51,8 +51,12 @@ Navegador web moderno, modular y extensible para dispositivos Android (Android 1
   - ☣️ **URLhaus (Abuse.ch):** Bloqueo en tiempo real de URLs confirmadas de distribución de malware, ransomware, botnets, troyanos bancarios y exploits automáticos.
   - 🛑 **HaGeZi Threat Intelligence Feeds (TIF):** Defensa estricta contra servidores de comando y control (C2), esquemas de phishing avanzado y trampas de suplantación.
   - 🧱 **StevenBlack Security Hosts:** Filtro consolidado de dominios fraudulentos y de estafa en caliente.
+- **Sincronización en Segundo Plano y Notificaciones Transparentes (Jetpack WorkManager):**
+  - 🔄 **Actualizaciones Esporádicas en Segundo Plano:** Tarea periódica desatendida (`ThreatShieldUpdateWorker`) que descarga automáticamente nuevas firmas de sitios maliciosos e inyecta las reglas en caliente en el motor Rust.
+  - 🔋 **Restricciones de Rendimiento y Ahorro:** Configuración con `setRequiresBatteryNotLow(true)` y conmutador opcional para descargar únicamente mediante conexión Wi-Fi (`NetworkType.UNMETERED`).
+  - 📢 **Transparencia Total Sin Secretos:** Al completarse la sincronización, el navegador emite una notificación nativa discreta (`IMPORTANCE_LOW`, sin sonido molesto ni vibración invasiva) informando exactamente cuántas firmas nuevas fueron añadidas y cuántos motores de ciberseguridad se actualizaron.
 - **Pantalla de Advertencia Crítica (`ThreatBlockedScreen`):** Si una página web maliciosa es detectada, se detiene la carga por completo y se despliega una pantalla de alerta carmesí que detalla la categoría del ataque, el dominio implicado, el motor de reporte y un botón de retorno seguro, permitiendo el ingreso bajo propio riesgo solo si el usuario lo autoriza explícitamente.
-- **Panel de Control Dedicado (`SecurityThreatScreen`):** Pantalla separada con interruptor maestro de protección web en tiempo real, contador acumulativo de amenazas neutralizadas y botón para sincronizar y compilar en caliente las bases de datos de seguridad hacia el motor Rust.
+- **Panel de Control Dedicado (`SecurityThreatScreen`):** Pantalla separada con interruptor maestro de protección web en tiempo real, contador acumulativo de amenazas neutralizadas, interruptores de sincronización automática y modo solo Wi-Fi, registro de última actualización y botón para comprobar y notificar en segundo plano de inmediato.
 
 ### 🍪 Gestor y Auditor de Cookies de Navegación
 - **Auditoría Detallada:** Visualización en tiempo real de todas las cookies almacenadas, detallando nombre, dominio de procedencia, ruta, caducidad y atributos de seguridad (`Secure`, `HttpOnly`).
@@ -129,6 +133,7 @@ Navegador web moderno, modular y extensible para dispositivos Android (Android 1
 | **Gestión de Identidad** | AndroidX Credential Manager + Google ID | Vinculación nativa de cuentas e inyección de sesiones web (`WebSignInBridge`) |
 | **Motor Web** | GeckoView Omni (Mozilla) / Android WebView | Motor web potente, extensible y personalizable |
 | **Arquitectura** | MVVM + Clean Architecture + StateFlow | Desacoplamiento de capas y flujo de datos unidireccional (UDF) |
+| **Tareas en Segundo Plano** | AndroidX WorkManager (`work-runtime-ktx`) | Sincronización esporádica de firmas de seguridad respetando batería y red |
 | **Navegación** | Jetpack Navigation Compose | Enrutamiento desacoplado entre pantallas dedicadas |
 
 

@@ -85,16 +85,35 @@ class FilterDelegate(
 
     /**
      * Añade reglas de filtrado manuales en formato EasyList / ABP o dominios Hosts.
+     * Despacha el procesamiento a un hilo de computación secundario (Dispatchers.Default)
+     * para garantizar que el hilo principal jamás se congele por análisis sintáctico.
      */
-    fun addRules(rules: String): Int {
+    fun addRules(rules: String) {
+        scope.launch(Dispatchers.Default) {
+            val total = NativeBridge.addFilterRules(rules)
+            withContext(Dispatchers.Main) {
+                _rulesCount.value = total
+                refreshStats()
+            }
+        }
+    }
+
+    /**
+     * Añade reglas de filtrado de forma asíncrona en un hilo secundario de procesamiento intensivo.
+     */
+    suspend fun addRulesAsync(rules: String): Int = withContext(Dispatchers.Default) {
         val total = NativeBridge.addFilterRules(rules)
-        _rulesCount.value = total
-        refreshStats()
-        return total
+        withContext(Dispatchers.Main) {
+            _rulesCount.value = total
+            refreshStats()
+        }
+        total
     }
 
     /**
      * Descarga y compila en caliente una lista actualizada de reglas de filtrado (por ejemplo, EasyList o lista Hosts).
+     * La descarga se realiza en Dispatchers.IO y la compilación de reglas en Dispatchers.Default,
+     * garantizando que el hilo principal permanezca 100% fluido y libre de bloqueos.
      */
     fun updateRulesFromRemote(
         listUrl: String = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
@@ -105,7 +124,7 @@ class FilterDelegate(
         _isUpdatingRules.value = true
         _lastUpdateMessage.value = "Descargando lista de reglas actualizada..."
 
-        scope.launch {
+        scope.launch(Dispatchers.Default) {
             try {
                 val rulesText = withContext(Dispatchers.IO) {
                     val request = Request.Builder()
@@ -123,20 +142,29 @@ class FilterDelegate(
                 }
 
                 if (rulesText.isNotBlank()) {
+                    // Compilación pesada de miles de reglas en el hilo de trabajo (Dispatchers.Default)
                     val newCount = NativeBridge.addFilterRules(rulesText)
-                    _rulesCount.value = newCount
-                    refreshStats()
-                    _lastUpdateMessage.value = "¡Actualización exitosa! $newCount reglas activas en el motor nativo."
-                    onComplete?.invoke(true, newCount)
+                    withContext(Dispatchers.Main) {
+                        _rulesCount.value = newCount
+                        refreshStats()
+                        _lastUpdateMessage.value = "¡Actualización exitosa! $newCount reglas activas en el motor nativo."
+                        onComplete?.invoke(true, newCount)
+                    }
                 } else {
-                    _lastUpdateMessage.value = "No se pudieron obtener datos de la fuente remota."
-                    onComplete?.invoke(false, _rulesCount.value)
+                    withContext(Dispatchers.Main) {
+                        _lastUpdateMessage.value = "No se pudieron obtener datos de la fuente remota."
+                        onComplete?.invoke(false, _rulesCount.value)
+                    }
                 }
             } catch (e: Throwable) {
-                _lastUpdateMessage.value = "Error al actualizar reglas: ${e.localizedMessage ?: "Error de red"}"
-                onComplete?.invoke(false, _rulesCount.value)
+                withContext(Dispatchers.Main) {
+                    _lastUpdateMessage.value = "Error al actualizar reglas: ${e.localizedMessage ?: "Error de red"}"
+                    onComplete?.invoke(false, _rulesCount.value)
+                }
             } finally {
-                _isUpdatingRules.value = false
+                withContext(Dispatchers.Main) {
+                    _isUpdatingRules.value = false
+                }
             }
         }
     }
