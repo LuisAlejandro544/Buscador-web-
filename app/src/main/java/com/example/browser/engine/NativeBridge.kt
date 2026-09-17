@@ -174,7 +174,17 @@ object NativeBridge {
             "scorecardresearch.com",
             "quantserve.com",
             "hotjar.com",
-            "chartbeat.com"
+            "chartbeat.com",
+            "testsafebrowsing.appspot.com",
+            "malware-traffic-analysis.net",
+            "cybercrime-tracker.net",
+            "vxvault.net",
+            "openphish.com",
+            "phishtank.org",
+            "urlhaus-api.abuse.ch",
+            "malware-test.org",
+            "phishing-test.org",
+            "botnet-tracker.org"
         )
         private var blockedCount = 0L
         private var allowedCount = 0L

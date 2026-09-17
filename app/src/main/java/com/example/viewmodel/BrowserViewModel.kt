@@ -41,6 +41,9 @@ import com.example.viewmodel.delegates.ExtensionDelegate
 import com.example.viewmodel.delegates.FilterDelegate
 import com.example.viewmodel.delegates.ReaderDelegate
 import com.example.viewmodel.delegates.SitePermissionDelegate
+import com.example.viewmodel.delegates.ThreatProtectionDelegate
+import com.example.model.BlockedThreatDetail
+import com.example.model.SecurityThreatFeed
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -84,6 +87,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val sitePermissionDelegate: SitePermissionDelegate
     private val readerDelegate: ReaderDelegate
     private val filterDelegate: FilterDelegate
+    private val threatProtectionDelegate: ThreatProtectionDelegate
 
     init {
         val database = BrowserDatabase.getInstance(application)
@@ -107,6 +111,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         sitePermissionDelegate = SitePermissionDelegate(repository, viewModelScope)
         readerDelegate = ReaderDelegate(application, viewModelScope)
         filterDelegate = FilterDelegate(application, viewModelScope)
+        threatProtectionDelegate = ThreatProtectionDelegate(application, viewModelScope)
 
         // Registrar sessionManager para hibernación de ahorro de RAM
         AppHibernationManager.registerSessionManager(sessionManager)
@@ -752,8 +757,24 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun updateFilterRulesFromRemote(onComplete: ((Boolean, Int) -> Unit)? = null) =
         filterDelegate.updateRulesFromRemote(onComplete = onComplete)
     fun addCustomFilterRule(rule: String) = filterDelegate.addRules(rule)
+    fun refreshFilterStats() = filterDelegate.refreshStats()
     fun shouldBlockUrlRequest(url: String, sourceUrl: String = "", requestType: String = "other"): Boolean =
         filterDelegate.shouldBlockUrl(url, sourceUrl, requestType)
+
+    // --- Escudo de Seguridad Web, Anti-Phishing y Malware en Tiempo Real ---
+    val isThreatShieldEnabled: StateFlow<Boolean> get() = threatProtectionDelegate.isThreatShieldEnabled
+    val blockedThreatsCount: StateFlow<Long> get() = threatProtectionDelegate.blockedThreatsCount
+    val currentBlockedThreat: StateFlow<BlockedThreatDetail?> get() = threatProtectionDelegate.currentBlockedThreat
+    val isUpdatingThreatFeeds: StateFlow<Boolean> get() = threatProtectionDelegate.isUpdatingFeeds
+    val threatFeedUpdateStatus: StateFlow<String?> get() = threatProtectionDelegate.feedUpdateStatus
+    val threatFeeds: StateFlow<List<SecurityThreatFeed>> get() = threatProtectionDelegate.threatFeeds
+
+    fun toggleThreatShield(enabled: Boolean) = threatProtectionDelegate.toggleThreatShield(enabled)
+    fun evaluateNavigationSecurity(url: String): BlockedThreatDetail? = threatProtectionDelegate.evaluateNavigationSecurity(url)
+    fun bypassThreatAndAllow(domain: String) = threatProtectionDelegate.bypassThreatAndAllow(domain)
+    fun dismissBlockedThreat() = threatProtectionDelegate.dismissBlockedThreat()
+    fun updateThreatFeedsFromRemote(onComplete: ((Boolean, Int) -> Unit)? = null) =
+        threatProtectionDelegate.updateThreatFeeds(onComplete)
 
     override fun onCleared() {
         super.onCleared()

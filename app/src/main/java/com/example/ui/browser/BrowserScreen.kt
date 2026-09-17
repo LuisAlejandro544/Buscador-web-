@@ -63,6 +63,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.example.browser.engine.GeckoViewEngine
 import com.example.ui.components.WebPromptDialog
 import com.example.ui.components.WebSignInPromptBanner
+import com.example.ui.security.ThreatBlockedScreen
 import com.example.viewmodel.BrowserViewModel
 import org.mozilla.geckoview.GeckoView
 
@@ -111,6 +112,7 @@ fun BrowserScreen(
     val isDesktopDefault by viewModel.isDesktopModeDefault.collectAsState()
     val activeWebPrompt by viewModel.activeWebPrompt.collectAsState()
     val webSignInPrompt by viewModel.webSignInPrompt.collectAsState()
+    val currentBlockedThreat by viewModel.currentBlockedThreat.collectAsState()
 
     val currentTabsCount = when {
         isProtected -> protectedTabs.size
@@ -427,6 +429,21 @@ fun BrowserScreen(
             promptRequest = activeWebPrompt,
             onDismissRequest = { viewModel.dismissWebPrompt() }
         )
+
+        // Pantalla de advertencia crítica por amenaza de phishing / malware interceptada
+        currentBlockedThreat?.let { threat ->
+            ThreatBlockedScreen(
+                threat = threat,
+                onSafeReturn = {
+                    viewModel.dismissBlockedThreat()
+                    viewModel.navigateToHome()
+                },
+                onBypassThreat = { domain ->
+                    viewModel.bypassThreatAndAllow(domain)
+                    viewModel.engineController?.reload()
+                }
+            )
+        }
     }
 }
 

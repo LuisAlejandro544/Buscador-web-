@@ -84,7 +84,19 @@ class GeckoViewEngine(
                     return GeckoResult.fromValue(AllowOrDeny.DENY)
                 }
 
-                // 2. Permitir protocolos web estándar y recursos embebidos
+                // 2. Evaluación prioritaria de Ciberseguridad: Anti-Phishing, Malware y Fraude Web
+                val detectedThreat = viewModel.evaluateNavigationSecurity(uriString)
+                if (detectedThreat != null) {
+                    return GeckoResult.fromValue(AllowOrDeny.DENY)
+                }
+
+                // 3. Intercepción preventiva de publicidad y rastreo con el motor adblock nativo en Rust (core-native)
+                val currentParentUrl = viewModel.pageState.value.url
+                if (viewModel.shouldBlockUrlRequest(uriString, currentParentUrl, "subdocument")) {
+                    return GeckoResult.fromValue(AllowOrDeny.DENY)
+                }
+
+                // 3. Permitir protocolos web estándar y recursos embebidos
                 if (uriString.startsWith("http://", ignoreCase = true) ||
                     uriString.startsWith("https://", ignoreCase = true) ||
                     uriString.startsWith("about:", ignoreCase = true) ||

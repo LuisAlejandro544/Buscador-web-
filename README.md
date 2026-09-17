@@ -44,6 +44,16 @@ Navegador web moderno, modular y extensible para dispositivos Android (Android 1
 - **Configuración de Seguridad de Red HTTPS:** Directiva `network_security_config.xml` estricta que prohíbe tráfico en texto claro (`cleartextTrafficPermitted="false"`) en dominios generales, restringiendo excepciones únicamente al entorno local de desarrollo (`localhost`).
 - **FileProvider Aislado:** Rutas de intercambio de archivos restringidas a directorios privados y acotados (`share/`).
 
+### 🛡️ Protección Anti-Phishing, Anti-Malware y Fraude Web en Tiempo Real
+- **Motor Nativo de Ultra-Alta Velocidad en Rust (`core-native`):** Evaluación en microsegundos de cada solicitud web antes de permitir el inicio de la conexión en GeckoView. Sin consumo innecesario de batería ni pesadas suites antivirus comerciales.
+- **Integración Multimotor de Inteligencia de Amenazas Mundial:**
+  - 🎣 **PhishTank & OpenPhish Shield:** Detección activa de sitios clonados que intentan suplantar bancos, billeteras de criptomonedas, PayPal, portales gubernamentales o redes sociales.
+  - ☣️ **URLhaus (Abuse.ch):** Bloqueo en tiempo real de URLs confirmadas de distribución de malware, ransomware, botnets, troyanos bancarios y exploits automáticos.
+  - 🛑 **HaGeZi Threat Intelligence Feeds (TIF):** Defensa estricta contra servidores de comando y control (C2), esquemas de phishing avanzado y trampas de suplantación.
+  - 🧱 **StevenBlack Security Hosts:** Filtro consolidado de dominios fraudulentos y de estafa en caliente.
+- **Pantalla de Advertencia Crítica (`ThreatBlockedScreen`):** Si una página web maliciosa es detectada, se detiene la carga por completo y se despliega una pantalla de alerta carmesí que detalla la categoría del ataque, el dominio implicado, el motor de reporte y un botón de retorno seguro, permitiendo el ingreso bajo propio riesgo solo si el usuario lo autoriza explícitamente.
+- **Panel de Control Dedicado (`SecurityThreatScreen`):** Pantalla separada con interruptor maestro de protección web en tiempo real, contador acumulativo de amenazas neutralizadas y botón para sincronizar y compilar en caliente las bases de datos de seguridad hacia el motor Rust.
+
 ### 🍪 Gestor y Auditor de Cookies de Navegación
 - **Auditoría Detallada:** Visualización en tiempo real de todas las cookies almacenadas, detallando nombre, dominio de procedencia, ruta, caducidad y atributos de seguridad (`Secure`, `HttpOnly`).
 - **Detección de Rastreadores (Trackers):** Identificación automática de cookies de telemetría y publicidad de terceros con distintivo rojo y filtro rápido ("Solo rastreadores").

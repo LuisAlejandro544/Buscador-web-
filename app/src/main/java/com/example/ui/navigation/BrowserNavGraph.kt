@@ -18,6 +18,7 @@ import com.example.ui.history.HistoryScreen
 import com.example.ui.onboarding.OnboardingScreen
 import com.example.ui.permissions.SitePermissionsScreen
 import com.example.ui.reader.ReaderScreen
+import com.example.ui.security.SecurityThreatScreen
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.tabs.TabsScreen
 import com.example.viewmodel.BrowserViewModel
@@ -144,7 +145,15 @@ fun BrowserNavGraph(
                 onNavigateToCookies = { navController.navigate(Screen.Cookies.route) },
                 onNavigateToAccounts = { navController.navigate(Screen.Accounts.route) },
                 onNavigateToSitePermissions = { navController.navigate(Screen.SitePermissions.route) },
-                onNavigateToExtensions = { navController.navigate(Screen.Extensions.route) }
+                onNavigateToExtensions = { navController.navigate(Screen.Extensions.route) },
+                onNavigateToSecurityThreats = { navController.navigate(Screen.SecurityThreats.route) }
+            )
+        }
+
+        composable(Screen.SecurityThreats.route) {
+            SecurityThreatScreen(
+                viewModel = viewModel,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
     }

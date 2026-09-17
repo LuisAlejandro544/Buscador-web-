@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Cookie
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -40,6 +41,7 @@ fun SettingsShortcutsSection(
     onNavigateToAccounts: () -> Unit,
     onNavigateToSitePermissions: () -> Unit,
     onNavigateToExtensions: () -> Unit,
+    onNavigateToSecurityThreats: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -57,6 +59,16 @@ fun SettingsShortcutsSection(
             )
 
             Spacer(modifier = Modifier.height(14.dp))
+
+            ShortcutRow(
+                icon = Icons.Default.Shield,
+                title = "Escudo de Seguridad Web",
+                subtitle = "Anti-Phishing y Malware (URLhaus, PhishTank, HaGeZi)",
+                onClick = onNavigateToSecurityThreats,
+                testTag = "settings_shortcut_security_threats"
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             ShortcutRow(
                 icon = Icons.Default.Cookie,

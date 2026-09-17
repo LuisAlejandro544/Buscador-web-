@@ -72,6 +72,11 @@ Este documento traza las fases de desarrollo, hitos completados y objetivos futu
 
 ### 🔵 Fase 3: Capacidades Avanzadas de Navegación, Privacidad y Lógica Rust (En Progreso)
 - [x] **Motor de Filtrado Nativo en Rust (`core-native`):** Integración del crate de alto rendimiento `adblock` (Mozilla/Brave compatible) en Rust Edition 2024 conectado vía JNI (`NativeBridge.kt`). Soporta reglas de sintaxis Adblock Plus / EasyList y listas Hosts, métricas de bloqueo en tiempo real, actualización de listas remotas y reglas manuales con panel de control dedicado en Ajustes.
+- [x] **Protección Anti-Phishing y Malware Web en Tiempo Real (Rust Multimotor):**
+  - Intercepción preventiva a microsegundos de cada solicitud web antes del renderizado en GeckoView mediante el motor Rust.
+  - Sincronización e integración de inteligencia de amenazas mundial: **URLhaus (Abuse.ch)** para malware y troyanos, **PhishTank & OpenPhish** para estafas bancarias y suplantación de identidad, **HaGeZi Threat Intelligence (TIF)** para botnets y C2, y **StevenBlack Security Hosts**.
+  - Pantalla dedicada de advertencia crítica (`ThreatBlockedScreen`) con opciones seguras de retroceso o bypass consciente.
+  - Pantalla dedicada de gestión y sincronización en caliente (`SecurityThreatScreen`) con métricas acumulativas de amenazas neutralizadas.
 - [x] **Modo Lectura Nativo (Reader Mode):** Extracción heurística de artículos web con `jsoup`, limpieza de elementos ruidosos (anuncios, cookies, menús), personalización tipográfica (Serif, Sans, Monospace, Sepia, Noche, Papel, OLED, espaciado e interlineado) y sintetizador de voz (TTS - Text to Speech) con lectura continua por bloques y selector de velocidad.
 - [ ] **Expansión de Efectos de Sonido y Personalización (Próximamente):**
   - Incorporación de nuevos bancos de efectos de sonido para añadir a marcadores ("pop"), cierre de pestañas ("whoosh"), vaciado de datos del modo incógnito y alertas de descargas bloqueadas.

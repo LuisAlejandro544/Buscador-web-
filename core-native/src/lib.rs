@@ -10,6 +10,7 @@ use std::sync::{Mutex, OnceLock};
 
 use adblock::engine::Engine;
 use adblock::lists::{FilterSet, ParseOptions};
+use adblock::request::Request;
 use serde::{Deserialize, Serialize};
 
 /// Versión del motor nativo Rust
@@ -25,7 +26,8 @@ pub struct FilterStats {
     pub version: String,
 }
 
-/// Estado en memoria del motor de filtrado
+/// Estado en memoria del motor de filtrado.
+/// Mantiene el conjunto de filtros compilados, el motor de coincidencia rápida y contadores.
 pub struct NativeFilterState {
     pub filter_set: FilterSet,
     pub engine: Option<Engine>,
@@ -34,42 +36,54 @@ pub struct NativeFilterState {
     pub allowed_count: u64,
 }
 
+// SEGURIDAD CONCURRENTE:
+// `Engine` de la biblioteca `adblock` contiene internamente estructuras (`Rc<...>` y almacenamiento dinámico)
+// que no implementan `Send` automáticamente por el compilador de Rust.
+// Al proteger `NativeFilterState` exclusivamente dentro de un `std::sync::Mutex`, garantizamos exclusión mutua
+// absoluta en tiempo de ejecución: solo un hilo puede consultar o mutar el motor en cualquier instante.
+unsafe impl Send for NativeFilterState {}
+
 static FILTER_STATE: OnceLock<Mutex<NativeFilterState>> = OnceLock::new();
 
 fn get_filter_state() -> &'static Mutex<NativeFilterState> {
     FILTER_STATE.get_or_init(|| {
-        let mut filter_set = FilterSet::new(true);
+        let mut filter_set = FilterSet::new(false);
 
-        // Reglas base esenciales integradas para bloqueo inmediato de telemetría y publicidad
-        let default_rules = [
-            "||doubleclick.net^",
-            "||google-analytics.com^",
-            "||googlesyndication.com^",
-            "||adservice.google.com^",
-            "||facebook.com/tr^",
-            "||outbrain.com^",
-            "||taboola.com^",
-            "||adnxs.com^",
-            "||rubiconproject.com^",
-            "||criteo.com^",
-            "||scorecardresearch.com^",
-            "||quantserve.com^",
-            "||hotjar.com^",
-            "||chartbeat.com^",
-        ];
+        // Reglas base esenciales integradas para bloqueo inmediato de publicidad, telemetría y amenazas de seguridad
+        let default_rules = "\
+||doubleclick.net^\n\
+||google-analytics.com^\n\
+||googlesyndication.com^\n\
+||adservice.google.com^\n\
+||facebook.com/tr^\n\
+||outbrain.com^\n\
+||taboola.com^\n\
+||adnxs.com^\n\
+||rubiconproject.com^\n\
+||criteo.com^\n\
+||scorecardresearch.com^\n\
+||quantserve.com^\n\
+||hotjar.com^\n\
+||chartbeat.com^\n\
+||testsafebrowsing.appspot.com^\n\
+||malware-traffic-analysis.net^\n\
+||cybercrime-tracker.net^\n\
+||vxvault.net^\n\
+||openphish.com^\n\
+||phishtank.org^\n\
+||urlhaus-api.abuse.ch^\n\
+||malware-test.org^\n\
+||phishing-test.org^\n\
+||botnet-tracker.org^";
 
-        let mut count = 0;
-        for rule in &default_rules {
-            filter_set.add_filter_list(rule, ParseOptions::default());
-            count += 1;
-        }
+        filter_set.add_filter_list(default_rules.to_string(), ParseOptions::default());
 
-        let engine = Engine::from_filter_set(filter_set.clone(), true);
+        let engine = Engine::new_with_filter_set(filter_set.clone());
 
         Mutex::new(NativeFilterState {
             filter_set,
             engine: Some(engine),
-            rules_count: count,
+            rules_count: 24,
             blocked_count: 0,
             allowed_count: 0,
         })
@@ -147,13 +161,13 @@ pub extern "C" fn core_native_filter_add_rules(rules_ptr: *const c_char) -> u32 
     for line in rules_str.lines() {
         let trimmed = line.trim();
         if !trimmed.is_empty() && !trimmed.starts_with('!') && !trimmed.starts_with('#') {
-            state.filter_set.add_filter_list(trimmed, ParseOptions::default());
             added_lines += 1;
         }
     }
 
+    state.filter_set.add_filter_list(rules_str.to_string(), ParseOptions::default());
     state.rules_count += added_lines;
-    state.engine = Some(Engine::from_filter_set(state.filter_set.clone(), true));
+    state.engine = Some(Engine::new_with_filter_set(state.filter_set.clone()));
 
     state.rules_count as u32
 }
@@ -198,8 +212,39 @@ pub extern "C" fn core_native_filter_should_block(
     };
 
     if let Some(engine) = &state.engine {
-        let block_result = engine.check_network_urls(url_str, source_str, req_type_str);
-        if block_result.matched {
+        // En adblock 0.13, las peticiones se describen mediante la estructura `Request`
+        let request_res = Request::new(url_str, source_str, req_type_str, "GET");
+        let should_block = match request_res {
+            Ok(req) => {
+                let block_result = engine.check_network_request(&req);
+                block_result.should_block()
+            }
+            Err(_) => {
+                // Verificación de respaldo para URLs con sintaxis no canónica
+                url_str.contains("doubleclick.net")
+                    || url_str.contains("google-analytics.com")
+                    || url_str.contains("googlesyndication.com")
+                    || url_str.contains("adservice.google.com")
+                    || url_str.contains("facebook.com/tr")
+                    || url_str.contains("outbrain.com")
+                    || url_str.contains("taboola.com")
+                    || url_str.contains("adnxs.com")
+                    || url_str.contains("rubiconproject.com")
+                    || url_str.contains("criteo.com")
+                    || url_str.contains("testsafebrowsing.appspot.com")
+                    || url_str.contains("malware-traffic-analysis.net")
+                    || url_str.contains("cybercrime-tracker.net")
+                    || url_str.contains("vxvault.net")
+                    || url_str.contains("openphish.com")
+                    || url_str.contains("phishtank.org")
+                    || url_str.contains("urlhaus-api.abuse.ch")
+                    || url_str.contains("malware-test.org")
+                    || url_str.contains("phishing-test.org")
+                    || url_str.contains("botnet-tracker.org")
+            }
+        };
+
+        if should_block {
             state.blocked_count += 1;
             true
         } else {

@@ -119,6 +119,11 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   │   └── OnboardingScreen.kt      # Pantalla inicial de bienvenida (selección de buscador y extensiones)
 │   ├── permissions/
 │   │   └── SitePermissionsScreen.kt # Pantalla dedicada para gestión de permisos por sitio y políticas "No Preguntar"
+│   ├── reader/
+│   │   └── ReaderScreen.kt          # Pantalla de modo lectura con extracción heurística y síntesis de voz (TTS)
+│   ├── security/
+│   │   ├── ThreatBlockedScreen.kt   # Pantalla de advertencia crítica por detección de phishing o malware
+│   │   └── SecurityThreatScreen.kt  # Pantalla de control, estadísticas y sincronización de motores de ciberseguridad
 │   ├── settings/
 │   │   ├── SettingsScreen.kt        # Orquestador de ajustes y configuración del navegador
 │   │   ├── SettingsGeneralSection.kt # Motor de búsqueda, página de inicio y modo escritorio
@@ -140,7 +145,10 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │       ├── ExtensionDelegate.kt     # Delegado de descarga, instalación y ciclo de vida de WebExtensions
 │       ├── DownloadDelegate.kt      # Delegado del motor de descargas en streaming y persistencia
 │       ├── AccountDelegate.kt       # Delegado de gestión de credenciales y perfiles de usuario
-│       └── SitePermissionDelegate.kt # Delegado de permisos por dominio web y políticas de bloqueo
+│       ├── SitePermissionDelegate.kt # Delegado de permisos por dominio web y políticas de bloqueo
+│       ├── ReaderDelegate.kt        # Delegado de extracción de artículos y motor TTS
+│       ├── FilterDelegate.kt        # Delegado del motor adblock nativo en Rust (core-native)
+│       └── ThreatProtectionDelegate.kt # Delegado del escudo de seguridad, anti-phishing y malware multimotor
 ├── MainActivity.kt                  # Activity principal con configuración Edge-to-Edge y contenedor Compose
 ├── .github/
 │   └── workflows/

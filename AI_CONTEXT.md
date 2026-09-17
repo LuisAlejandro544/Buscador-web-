@@ -139,5 +139,16 @@ Este archivo proporciona el contexto fundamental del proyecto para cualquier mod
     - **Configuración de Seguridad de Red:** Restricción estricta de tráfico en texto claro con `cleartextTrafficPermitted="false"`, habilitando excepciones únicamente para `localhost`.
     - **FileProvider Aislado:** Directorio dedicado y restringido `share/` para compartir archivos de forma segura.
 
+17. **Protección Anti-Phishing y Malware Web en Tiempo Real (Rust Multimotor):**
+    - **Arquitectura de Ciberdefensa Ligera:** Aprovecha la integración nativa JNI con el crate `adblock` compilado en Rust (`core-native`) para analizar cada URL y petición secundaria en microsegundos, evitando suites antivirus comerciales pesadas o lentas.
+    - **Fuentes de Inteligencia Global de Amenazas:**
+      - **URLhaus (Abuse.ch):** Lista negra en tiempo real de distribución de malware, troyanos bancarios, botnets y ransomware.
+      - **PhishTank & OpenPhish:** Intercepción de suplantaciones bancarias, robo de credenciales y páginas señuelo de estafas online.
+      - **HaGeZi Threat Intelligence Feeds (TIF):** Protección contra servidores C2 (Command & Control), dominios maliciosos emergentes y trackers agresivos.
+      - **StevenBlack Security Hosts:** Filtro consolidado de dominios de estafa, fraude y fake-news fraudulentas.
+    - **Evaluación Preventiva Fail-Safe:** `GeckoViewEngine.kt` llama a `viewModel.evaluateNavigationSecurity(url)` dentro de `onLoadRequest`. Si se intercepta una amenaza, GeckoView deniega inmediatamente la carga del sitio.
+    - **Pantalla de Alerta Crítica (`ThreatBlockedScreen.kt`):** Pantalla carmesí Material 3 que desglosa la categoría del ataque, la URL maliciosa, el feed responsable y ofrece dos acciones: botón de regreso seguro (cerrar o ir a Home) o ingreso excepcional bajo propio riesgo (Bypass domain).
+    - **Pantalla de Administración y Métricas (`SecurityThreatScreen.kt`):** Vista dedicada para conmutar el escudo, revisar el contador histórico de ataques bloqueados y descargar/sincronizar en caliente las listas hacia el motor Rust.
+
 
 
