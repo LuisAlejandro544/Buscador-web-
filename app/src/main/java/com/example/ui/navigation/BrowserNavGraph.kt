@@ -1,8 +1,10 @@
 package com.example.ui.navigation
 
+import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -12,6 +14,7 @@ import com.example.ui.account.AccountsScreen
 import com.example.ui.bookmarks.BookmarksScreen
 import com.example.ui.browser.BrowserScreen
 import com.example.ui.cookies.CookiesScreen
+import com.example.ui.debug.CrashInspectorActivity
 import com.example.ui.downloads.DownloadsScreen
 import com.example.ui.extension.ExtensionsScreen
 import com.example.ui.history.HistoryScreen
@@ -34,6 +37,7 @@ fun BrowserNavGraph(
     viewModel: BrowserViewModel,
     navController: NavHostController = rememberNavController()
 ) {
+    val context = LocalContext.current
     val isOnboardingCompleted by viewModel.isOnboardingCompleted.collectAsStateWithLifecycle()
 
     NavHost(
@@ -137,7 +141,11 @@ fun BrowserNavGraph(
                 onNavigateToAccounts = { navController.navigate(Screen.Accounts.route) },
                 onNavigateToSitePermissions = { navController.navigate(Screen.SitePermissions.route) },
                 onNavigateToExtensions = { navController.navigate(Screen.Extensions.route) },
-                onNavigateToSecurityThreats = { navController.navigate(Screen.SecurityThreats.route) }
+                onNavigateToSecurityThreats = { navController.navigate(Screen.SecurityThreats.route) },
+                onNavigateToCrashInspector = {
+                    val intent = Intent(context, CrashInspectorActivity::class.java)
+                    context.startActivity(intent)
+                }
             )
         }
 

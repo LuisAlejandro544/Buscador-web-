@@ -55,7 +55,8 @@ fun SettingsScreen(
     onNavigateToAccounts: () -> Unit = {},
     onNavigateToSitePermissions: () -> Unit = {},
     onNavigateToExtensions: () -> Unit = {},
-    onNavigateToSecurityThreats: () -> Unit = {}
+    onNavigateToSecurityThreats: () -> Unit = {},
+    onNavigateToCrashInspector: () -> Unit = {}
 ) {
     val searchEngine by viewModel.searchEngine.collectAsState()
     val homePageUrl by viewModel.homePageUrl.collectAsState()
@@ -116,7 +117,8 @@ fun SettingsScreen(
                 onNavigateToAccounts = onNavigateToAccounts,
                 onNavigateToSitePermissions = onNavigateToSitePermissions,
                 onNavigateToExtensions = onNavigateToExtensions,
-                onNavigateToSecurityThreats = onNavigateToSecurityThreats
+                onNavigateToSecurityThreats = onNavigateToSecurityThreats,
+                onNavigateToCrashInspector = onNavigateToCrashInspector
             )
 
             // Sección de Escudo de Filtrado Nativo (Rust core-native adblock)

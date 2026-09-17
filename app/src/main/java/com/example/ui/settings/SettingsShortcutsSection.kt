@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Cookie
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Security
@@ -42,6 +43,7 @@ fun SettingsShortcutsSection(
     onNavigateToSitePermissions: () -> Unit,
     onNavigateToExtensions: () -> Unit,
     onNavigateToSecurityThreats: () -> Unit,
+    onNavigateToCrashInspector: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -106,6 +108,16 @@ fun SettingsShortcutsSection(
                 subtitle = "Gestión e instalación de complementos Mozilla",
                 onClick = onNavigateToExtensions,
                 testTag = "settings_shortcut_extensions"
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            ShortcutRow(
+                icon = Icons.Default.BugReport,
+                title = "Crash Inspector & Diagnósticos",
+                subtitle = "Historial de cierres, caídas GeckoView, OOM y ANR",
+                onClick = onNavigateToCrashInspector,
+                testTag = "settings_shortcut_crash_inspector"
             )
         }
     }

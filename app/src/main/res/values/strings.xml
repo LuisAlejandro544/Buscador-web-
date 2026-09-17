@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Navegador Web</string>
+    <string name="crash_inspector_app_name">Crash Inspector</string>
 </resources>

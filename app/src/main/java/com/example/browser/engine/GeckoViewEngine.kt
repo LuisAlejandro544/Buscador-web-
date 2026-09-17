@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
+import com.example.browser.debug.CrashLogManager
 import com.example.data.local.entity.SitePermissionEntity
 import com.example.viewmodel.BrowserViewModel
 import org.mozilla.geckoview.AllowOrDeny
@@ -163,6 +164,7 @@ class GeckoViewEngine(
         // 2. Delegado de Progreso: barra de progreso, estado de seguridad SSL y carga
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(s: GeckoSession, url: String) {
+                CrashLogManager.updateCurrentUrl(url)
                 viewModel.onPageStarted(url)
             }
 
@@ -205,8 +207,6 @@ class GeckoViewEngine(
             }
 
             override fun onCrash(s: GeckoSession) {
-                // Recuperación controlada: reintentar máximo 2 veces si ocurre una caída esporádica
-                // pero frenar de inmediato si entra en bucle continuo para proteger el proceso del navegador
                 val now = System.currentTimeMillis()
                 if (now - lastCrashTimestamp < 6000L) {
                     consecutiveCrashCount++
@@ -214,6 +214,10 @@ class GeckoViewEngine(
                     consecutiveCrashCount = 1
                 }
                 lastCrashTimestamp = now
+
+                // Registrar el incidente de renderizado en el Crash Inspector
+                val currentUrl = viewModel.pageState.value.url
+                CrashLogManager.recordGeckoCrash(context, currentUrl, isOom = false, consecutiveCrashCount)
 
                 if (consecutiveCrashCount <= 2) {
                     try { s.reload() } catch (_: Throwable) {}
@@ -230,6 +234,10 @@ class GeckoViewEngine(
                     consecutiveCrashCount = 1
                 }
                 lastCrashTimestamp = now
+
+                // Registrar la matanza por falta de memoria (OOM) en el Crash Inspector
+                val currentUrl = viewModel.pageState.value.url
+                CrashLogManager.recordGeckoCrash(context, currentUrl, isOom = true, consecutiveCrashCount)
 
                 if (consecutiveCrashCount <= 2) {
                     try { s.reload() } catch (_: Throwable) {}

@@ -9,6 +9,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
+        android:name=".BrowserApplication"
         android:allowBackup="false"
         android:largeHeap="true"
         android:hardwareAccelerated="true"
@@ -39,6 +40,22 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="http" />
                 <data android:scheme="https" />
+            </intent-filter>
+        </activity>
+
+        <!-- Herramienta de Diagnóstico Forense (Crash Inspector) con icono independiente en el cajón de aplicaciones -->
+        <activity
+            android:name=".ui.debug.CrashInspectorActivity"
+            android:exported="true"
+            android:label="@string/crash_inspector_app_name"
+            android:icon="@drawable/ic_crash_inspector"
+            android:roundIcon="@drawable/ic_crash_inspector"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:theme="@style/Theme.MyApplication">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
