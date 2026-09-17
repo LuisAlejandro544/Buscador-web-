@@ -129,10 +129,7 @@ object AppHibernationManager {
         _isHibernated.value = true
 
         try {
-            // Dormir sesiones pesadas de GeckoView abiertas en memoria
-            sessionManager?.closeAllSessions()
-
-            // Purgar cachés temporales y solicitar recolección de basura
+            // Purgar cachés temporales de memoria y solicitar recolección de basura
             GeckoRuntimeProvider.purgeIncognitoMemory(context)
 
             System.gc()

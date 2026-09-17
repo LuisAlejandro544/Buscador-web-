@@ -5,20 +5,24 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.data.model.SearchEngine
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import java.io.IOException
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "browser_settings")
 
 /**
- * Gestor de preferencias de usuario del navegador usando Jetpack DataStore.
- * Almacena configuraciones como motor de búsqueda predeterminado, modo escritorio,
- * opciones de seguridad, JavaScript y cookies.
+ * Gestor de preferencias de usuario del navegador usando Jetpack DataStore con respaldo sincrónico
+ * en SharedPreferences para evitar pantallas de bienvenida intermitentes o parpadeos de configuración.
  */
 class BrowserPreferences(private val context: Context) {
+
+    private val sharedPrefs = context.getSharedPreferences("browser_settings_sync", Context.MODE_PRIVATE)
 
     companion object {
         val KEY_SEARCH_ENGINE = stringPreferencesKey("search_engine")
@@ -33,20 +37,55 @@ class BrowserPreferences(private val context: Context) {
         val KEY_BLOCK_MEDIA_PROMPTS = booleanPreferencesKey("block_media_prompts")
         val KEY_SOUND_EFFECTS_ENABLED = booleanPreferencesKey("sound_effects_enabled")
         val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+
+        private const val SP_KEY_ONBOARDING_COMPLETED = "onboarding_completed"
+        private const val SP_KEY_SEARCH_ENGINE = "search_engine"
     }
 
-    val isOnboardingCompleted: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[KEY_ONBOARDING_COMPLETED] ?: false
+    /**
+     * Consulta inmediata y sincrónica para evitar cualquier redirección errónea en el arranque.
+     */
+    fun isOnboardingCompletedSync(): Boolean {
+        return sharedPrefs.getBoolean(SP_KEY_ONBOARDING_COMPLETED, false)
     }
 
-    val searchEngine: Flow<SearchEngine> = context.dataStore.data.map { preferences ->
-        val engineName = preferences[KEY_SEARCH_ENGINE] ?: SearchEngine.DUCKDUCKGO.name
-        try {
-            SearchEngine.valueOf(engineName)
+    fun getSearchEngineSync(): SearchEngine {
+        val name = sharedPrefs.getString(SP_KEY_SEARCH_ENGINE, SearchEngine.DUCKDUCKGO.name)
+        return try {
+            SearchEngine.valueOf(name ?: SearchEngine.DUCKDUCKGO.name)
         } catch (_: Exception) {
             SearchEngine.DUCKDUCKGO
         }
     }
+
+    val isOnboardingCompleted: Flow<Boolean> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[KEY_ONBOARDING_COMPLETED] ?: isOnboardingCompletedSync()
+        }
+
+    val searchEngine: Flow<SearchEngine> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            val engineName = preferences[KEY_SEARCH_ENGINE] ?: sharedPrefs.getString(SP_KEY_SEARCH_ENGINE, SearchEngine.DUCKDUCKGO.name)
+            try {
+                SearchEngine.valueOf(engineName ?: SearchEngine.DUCKDUCKGO.name)
+            } catch (_: Exception) {
+                SearchEngine.DUCKDUCKGO
+            }
+        }
 
     val isDesktopModeDefault: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[KEY_DESKTOP_MODE_DEFAULT] ?: false
@@ -86,6 +125,7 @@ class BrowserPreferences(private val context: Context) {
     }
 
     suspend fun setSearchEngine(engine: SearchEngine) {
+        sharedPrefs.edit().putString(SP_KEY_SEARCH_ENGINE, engine.name).apply()
         context.dataStore.edit { preferences ->
             preferences[KEY_SEARCH_ENGINE] = engine.name
         }
@@ -146,6 +186,7 @@ class BrowserPreferences(private val context: Context) {
     }
 
     suspend fun setOnboardingCompleted(completed: Boolean) {
+        sharedPrefs.edit().putBoolean(SP_KEY_ONBOARDING_COMPLETED, completed).apply()
         context.dataStore.edit { preferences ->
             preferences[KEY_ONBOARDING_COMPLETED] = completed
         }

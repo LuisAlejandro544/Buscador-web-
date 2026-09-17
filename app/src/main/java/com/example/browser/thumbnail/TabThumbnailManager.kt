@@ -38,13 +38,26 @@ object TabThumbnailManager {
             val targetHeight = (targetWidth * aspectRatio).toInt().coerceAtMost(540)
 
             val scaled = Bitmap.createScaledBitmap(originalBitmap, targetWidth, targetHeight, true)
-            memoryCache[tabId] = scaled
+            
+            // Reemplazar y reciclar inmediatamente la miniatura anterior de esta pestaña si existía
+            val oldBitmap = memoryCache.put(tabId, scaled)
+            if (oldBitmap != null && oldBitmap != scaled && !oldBitmap.isRecycled) {
+                try { oldBitmap.recycle() } catch (_: Throwable) {}
+            }
+
+            // Liberar inmediatamente el bitmap de pantalla completa original para no saturar memoria RAM
+            if (originalBitmap != scaled && !originalBitmap.isRecycled) {
+                try { originalBitmap.recycle() } catch (_: Throwable) {}
+            }
 
             // Emitir copia inmutable para actualizar observadores en Jetpack Compose
             _thumbnailsFlow.value = memoryCache.toMap()
         } catch (e: Throwable) {
             // Manejo preventivo si la memoria es limitada
-            memoryCache[tabId] = originalBitmap
+            val oldBitmap = memoryCache.put(tabId, originalBitmap)
+            if (oldBitmap != null && oldBitmap != originalBitmap && !oldBitmap.isRecycled) {
+                try { oldBitmap.recycle() } catch (_: Throwable) {}
+            }
             _thumbnailsFlow.value = memoryCache.toMap()
         }
     }

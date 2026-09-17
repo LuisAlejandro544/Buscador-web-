@@ -66,7 +66,6 @@ class GeckoViewEngine(
                 url?.let { validUrl ->
                     if (validUrl.isNotBlank() && validUrl != "about:blank" && validUrl != "about:home") {
                         viewModel.onPageStarted(validUrl)
-                        viewModel.onPageFinished(validUrl, viewModel.pageState.value.title)
                     }
                 }
             }
@@ -186,10 +185,14 @@ class GeckoViewEngine(
 
         // 3. Delegado de Contenido: título de página, descargas y recuperación ante caídas
         session.contentDelegate = object : GeckoSession.ContentDelegate {
+            private var lastCrashTimestamp = 0L
+            private var consecutiveCrashCount = 0
+
             override fun onTitleChange(s: GeckoSession, title: String?) {
-                val currentUrl = viewModel.pageState.value.url
-                if (currentUrl.isNotBlank() && currentUrl != "about:blank" && currentUrl != "about:home") {
-                    viewModel.onPageFinished(currentUrl, title)
+                title?.let { validTitle ->
+                    if (validTitle.isNotBlank()) {
+                        viewModel.onTitleChanged(validTitle)
+                    }
                 }
             }
 
@@ -202,12 +205,37 @@ class GeckoViewEngine(
             }
 
             override fun onCrash(s: GeckoSession) {
-                // Recuperación automática si el proceso de contenido de Gecko experimenta un fallo
-                s.reload()
+                // Recuperación controlada: reintentar máximo 2 veces si ocurre una caída esporádica
+                // pero frenar de inmediato si entra en bucle continuo para proteger el proceso del navegador
+                val now = System.currentTimeMillis()
+                if (now - lastCrashTimestamp < 6000L) {
+                    consecutiveCrashCount++
+                } else {
+                    consecutiveCrashCount = 1
+                }
+                lastCrashTimestamp = now
+
+                if (consecutiveCrashCount <= 2) {
+                    try { s.reload() } catch (_: Throwable) {}
+                } else {
+                    viewModel.onPageCrash()
+                }
             }
 
             override fun onKill(s: GeckoSession) {
-                s.reload()
+                val now = System.currentTimeMillis()
+                if (now - lastCrashTimestamp < 6000L) {
+                    consecutiveCrashCount++
+                } else {
+                    consecutiveCrashCount = 1
+                }
+                lastCrashTimestamp = now
+
+                if (consecutiveCrashCount <= 2) {
+                    try { s.reload() } catch (_: Throwable) {}
+                } else {
+                    viewModel.onPageCrash()
+                }
             }
         }
 

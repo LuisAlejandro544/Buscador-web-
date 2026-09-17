@@ -160,6 +160,7 @@ fun OnboardingScreen(
                 currentStep = currentStep,
                 isInstalling = isInstallingBatch,
                 onNextStep = {
+                    viewModel.selectSearchEngine(selectedEngine)
                     currentStep = 2
                 },
                 onSkip = {
@@ -525,20 +526,31 @@ private fun OnboardingBottomActions(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (currentStep == 1) {
+            OutlinedButton(
+                onClick = onSkip,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(50.dp)
+                    .testTag("onboarding_skip_step1"),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Omitir y Entrar")
+            }
+
             Button(
                 onClick = onNextStep,
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .weight(1.5f)
                     .height(50.dp)
                     .testTag("onboarding_next_step"),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(
-                    text = "Continuar a Extensiones",
+                    text = "Extensiones",
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
             }
         } else {

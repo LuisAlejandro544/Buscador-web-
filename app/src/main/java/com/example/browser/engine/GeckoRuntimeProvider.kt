@@ -68,6 +68,12 @@ object GeckoRuntimeProvider {
                   dom.battery.enabled: false
                   dom.gamepad.enabled: false
                   dom.netinfo.enabled: true
+                  browser.cache.memory.enable: true
+                  browser.cache.memory.capacity: 32768
+                  image.mem.surfacecache.max_size_kb: 32768
+                  javascript.options.mem.gc_frequency: 20
+                  dom.ipc.processHangMonitor: false
+                  extensions.webextensions.background-delayed-startup: true
                 """.trimIndent()
             )
         } catch (_: Throwable) {

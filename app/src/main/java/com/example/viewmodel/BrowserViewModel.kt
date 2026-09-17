@@ -194,11 +194,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun clearAllCookies() = cookieDelegate.clearAllCookies()
 
     // --- Onboarding y Preferencias Generales ---
-    val isOnboardingCompleted: StateFlow<Boolean> = repository.isOnboardingCompleted
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    private val _isOnboardingCompleted = MutableStateFlow(repository.isOnboardingCompletedSync())
+    val isOnboardingCompleted: StateFlow<Boolean> = _isOnboardingCompleted.asStateFlow()
 
-    val searchEngine: StateFlow<SearchEngine> = repository.searchEngine
-        .stateIn(viewModelScope, SharingStarted.Eagerly, SearchEngine.DUCKDUCKGO)
+    private val _searchEngine = MutableStateFlow(repository.getSearchEngineSync())
+    val searchEngine: StateFlow<SearchEngine> = _searchEngine.asStateFlow()
 
     val isDesktopModeDefault: StateFlow<Boolean> = repository.isDesktopModeDefault
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
@@ -315,6 +315,18 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repository.isDoNotTrackEnabled.collect { enabled ->
                 sessionManager.setDoNotTrackEnabled(enabled)
+            }
+        }
+
+        // Sincronización continua de onboarding y motor de búsqueda
+        viewModelScope.launch {
+            repository.isOnboardingCompleted.collect { completed ->
+                _isOnboardingCompleted.value = completed
+            }
+        }
+        viewModelScope.launch {
+            repository.searchEngine.collect { engine ->
+                _searchEngine.value = engine
             }
         }
 
@@ -599,12 +611,21 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         } catch (_: Throwable) {}
     }
 
+    private var thumbnailCaptureJob: kotlinx.coroutines.Job? = null
+
     fun captureCurrentTabThumbnail() {
         val currentId = _activeTabId.value ?: return
-        val controller = engineController
-        if (controller is GeckoViewEngine) {
-            controller.captureThumbnail { bitmap ->
-                TabThumbnailManager.saveThumbnail(currentId, bitmap)
+        val currentUrl = _pageState.value.url
+        if (currentUrl.isBlank() || currentUrl == "about:blank" || currentUrl == "about:home") return
+
+        thumbnailCaptureJob?.cancel()
+        thumbnailCaptureJob = viewModelScope.launch {
+            delay(500L) // Debounce para proteger la memoria RAM en transiciones rápidas
+            val controller = engineController
+            if (controller is GeckoViewEngine) {
+                controller.captureThumbnail { bitmap ->
+                    TabThumbnailManager.saveThumbnail(currentId, bitmap)
+                }
             }
         }
     }
@@ -675,10 +696,34 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             viewModelScope.launch {
                 repository.updateTab(updated)
                 repository.addHistoryEntry(resolvedTitle, url, _isIncognitoMode.value, faviconUrl)
-                delay(400L)
                 captureCurrentTabThumbnail()
             }
         }
+    }
+
+    /**
+     * Actualiza el título de la página y pestaña sin disparar reinicios ni capturas pesadas.
+     */
+    fun onTitleChanged(newTitle: String) {
+        if (newTitle.isBlank()) return
+        _pageState.value = _pageState.value.copy(title = newTitle)
+        _activeTab.value?.let { currentTab ->
+            val updated = currentTab.copy(title = newTitle)
+            _activeTab.value = updated
+            viewModelScope.launch {
+                repository.updateTab(updated)
+            }
+        }
+    }
+
+    /**
+     * Detiene el estado de carga y protege la interfaz cuando el motor sufre una caída repetida.
+     */
+    fun onPageCrash() {
+        _pageState.value = _pageState.value.copy(
+            isLoading = false,
+            progress = 0
+        )
     }
 
     fun onProgressChanged(newProgress: Int) {
@@ -705,9 +750,18 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun dismissWebPrompt() { _activeWebPrompt.value = null }
 
     // --- Preferencias del Navegador ---
-    fun setOnboardingCompleted(completed: Boolean = true) = viewModelScope.launch { repository.setOnboardingCompleted(completed) }
-    fun selectSearchEngine(engine: SearchEngine) = viewModelScope.launch { repository.setSearchEngine(engine) }
-    fun setSearchEngine(engine: SearchEngine) = viewModelScope.launch { repository.setSearchEngine(engine) }
+    fun setOnboardingCompleted(completed: Boolean = true) {
+        _isOnboardingCompleted.value = completed
+        viewModelScope.launch { repository.setOnboardingCompleted(completed) }
+    }
+    fun selectSearchEngine(engine: SearchEngine) {
+        _searchEngine.value = engine
+        viewModelScope.launch { repository.setSearchEngine(engine) }
+    }
+    fun setSearchEngine(engine: SearchEngine) {
+        _searchEngine.value = engine
+        viewModelScope.launch { repository.setSearchEngine(engine) }
+    }
     fun setDesktopModeDefault(enabled: Boolean) = viewModelScope.launch { repository.setDesktopModeDefault(enabled) }
     fun setJavaScriptEnabled(enabled: Boolean) {
         viewModelScope.launch {

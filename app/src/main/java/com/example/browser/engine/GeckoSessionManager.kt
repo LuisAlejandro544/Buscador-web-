@@ -77,33 +77,41 @@ class GeckoSessionManager(private val context: Context) {
         contextId: String? = null,
         isDesktopMode: Boolean = false
     ): GeckoSession {
-        return sessions.getOrPut(tabId) {
-            val builder = GeckoSessionSettings.Builder()
-                .usePrivateMode(isIncognito)
-                .userAgentMode(
-                    if (isDesktopMode) GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
-                    else GeckoSessionSettings.USER_AGENT_MODE_MOBILE
-                )
-                .viewportMode(
-                    if (isDesktopMode) GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
-                    else GeckoSessionSettings.VIEWPORT_MODE_MOBILE
-                )
-                .useTrackingProtection(isDoNotTrackEnabled || isIncognito)
-                .allowJavascript(isJavaScriptEnabled)
-
-            // Dejar que GeckoView envíe su User-Agent nativo sincronizado con el motor
-            // para evitar banderas de discrepancia en sistemas de protección contra bots
-
-            // Si es una pestaña protegida, asignamos un contexto aislado de identidad
-            if (isProtected) {
-                val effectiveContextId = contextId ?: "isolated_tab_$tabId"
-                builder.contextId(effectiveContextId)
-            }
-
-            val session = GeckoSession(builder.build())
-            session.open(runtime)
-            session
+        val existing = sessions[tabId]
+        if (existing != null && existing.isOpen) {
+            return existing
         }
+        // Si existía pero la sesión nativa fue cerrada o invalidada, purgar la referencia
+        if (existing != null) {
+            sessions.remove(tabId)
+        }
+
+        val builder = GeckoSessionSettings.Builder()
+            .usePrivateMode(isIncognito)
+            .userAgentMode(
+                if (isDesktopMode) GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
+                else GeckoSessionSettings.USER_AGENT_MODE_MOBILE
+            )
+            .viewportMode(
+                if (isDesktopMode) GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
+                else GeckoSessionSettings.VIEWPORT_MODE_MOBILE
+            )
+            .useTrackingProtection(isDoNotTrackEnabled || isIncognito)
+            .allowJavascript(isJavaScriptEnabled)
+
+        // Dejar que GeckoView envíe su User-Agent nativo sincronizado con el motor
+        // para evitar banderas de discrepancia en sistemas de protección contra bots
+
+        // Si es una pestaña protegida, asignamos un contexto aislado de identidad
+        if (isProtected) {
+            val effectiveContextId = contextId ?: "isolated_tab_$tabId"
+            builder.contextId(effectiveContextId)
+        }
+
+        val session = GeckoSession(builder.build())
+        session.open(runtime)
+        sessions[tabId] = session
+        return session
     }
 
     /**
@@ -165,6 +173,17 @@ class GeckoSessionManager(private val context: Context) {
      * Indica si una pestaña tiene actualmente una sesión viva y abierta en la memoria de GeckoView.
      */
     fun isSessionLoaded(tabId: Long): Boolean = sessions[tabId]?.isOpen == true
+
+    /**
+     * Hiberna todas las pestañas secundarias en segundo plano, protegiendo la sesión de la pestaña activa en pantalla.
+     */
+    fun hibernateInactiveSessions(activeTabId: Long?) {
+        sessions.keys.forEach { tabId ->
+            if (tabId != activeTabId) {
+                hibernateSession(tabId)
+            }
+        }
+    }
 
     /**
      * Cierra todas las sesiones abiertas al salir o limpiar el navegador.

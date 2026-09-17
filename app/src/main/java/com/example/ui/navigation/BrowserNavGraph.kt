@@ -36,18 +36,9 @@ fun BrowserNavGraph(
 ) {
     val isOnboardingCompleted by viewModel.isOnboardingCompleted.collectAsStateWithLifecycle()
 
-    // Redirige al Onboarding si el usuario aún no ha realizado la configuración inicial
-    LaunchedEffect(isOnboardingCompleted) {
-        if (!isOnboardingCompleted) {
-            navController.navigate(Screen.Onboarding.route) {
-                popUpTo(Screen.Browser.route) { inclusive = true }
-            }
-        }
-    }
-
     NavHost(
         navController = navController,
-        startDestination = Screen.Browser.route
+        startDestination = if (isOnboardingCompleted) Screen.Browser.route else Screen.Onboarding.route
     ) {
         composable(Screen.Onboarding.route) {
             OnboardingScreen(

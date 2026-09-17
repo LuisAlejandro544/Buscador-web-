@@ -253,6 +253,9 @@ class BrowserRepository(
     val isSoundEffectsEnabled: Flow<Boolean> = preferences.isSoundEffectsEnabled
     val isOnboardingCompleted: Flow<Boolean> = preferences.isOnboardingCompleted
 
+    fun isOnboardingCompletedSync(): Boolean = preferences.isOnboardingCompletedSync()
+    fun getSearchEngineSync(): SearchEngine = preferences.getSearchEngineSync()
+
     suspend fun setSearchEngine(engine: SearchEngine) = preferences.setSearchEngine(engine)
     suspend fun setDesktopModeDefault(enabled: Boolean) = preferences.setDesktopModeDefault(enabled)
     suspend fun setJavaScriptEnabled(enabled: Boolean) = preferences.setJavaScriptEnabled(enabled)
