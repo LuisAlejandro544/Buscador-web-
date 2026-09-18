@@ -5,6 +5,7 @@ import com.example.data.local.dao.BookmarkDao
 import com.example.data.local.dao.CookieDao
 import com.example.data.local.dao.DownloadDao
 import com.example.data.local.dao.HistoryDao
+import com.example.data.local.dao.ShortcutDao
 import com.example.data.local.dao.SitePermissionDao
 import com.example.data.local.dao.TabDao
 import com.example.data.local.dao.UserAccountDao
@@ -12,6 +13,7 @@ import com.example.data.local.entity.BookmarkEntity
 import com.example.data.local.entity.CookieEntity
 import com.example.data.local.entity.DownloadEntity
 import com.example.data.local.entity.HistoryEntity
+import com.example.data.local.entity.ShortcutEntity
 import com.example.data.local.entity.SitePermissionEntity
 import com.example.data.local.entity.TabEntity
 import com.example.data.local.entity.UserAccountEntity
@@ -34,6 +36,7 @@ class BrowserRepository(
     private val cookieDao: CookieDao,
     private val userAccountDao: UserAccountDao,
     private val sitePermissionDao: SitePermissionDao,
+    private val shortcutDao: ShortcutDao,
     private val preferences: BrowserPreferences
 ) {
     // --- Pestañas ---
@@ -294,4 +297,40 @@ class BrowserRepository(
     suspend fun setThreatsUpdateOnlyWifi(onlyWifi: Boolean) = preferences.setThreatsUpdateOnlyWifi(onlyWifi)
     suspend fun recordThreatUpdateResult(rulesCount: Int, timestamp: Long = System.currentTimeMillis()) =
         preferences.recordThreatUpdateResult(rulesCount, timestamp)
+
+    // --- Accesos Directos Configurables (Speed Dial) ---
+    fun getAllShortcuts(): Flow<List<ShortcutEntity>> = shortcutDao.getAllShortcuts()
+
+    suspend fun getAllShortcutsList(): List<ShortcutEntity> = withContext(Dispatchers.IO) {
+        shortcutDao.getAllShortcutsList()
+    }
+
+    suspend fun getShortcutsCount(): Int = withContext(Dispatchers.IO) {
+        shortcutDao.getCount()
+    }
+
+    suspend fun addShortcut(shortcut: ShortcutEntity): Long = withContext(Dispatchers.IO) {
+        shortcutDao.insertShortcut(shortcut)
+    }
+
+    suspend fun insertDefaultShortcuts(shortcuts: List<ShortcutEntity>) = withContext(Dispatchers.IO) {
+        shortcutDao.insertAll(shortcuts)
+    }
+
+    suspend fun updateShortcut(shortcut: ShortcutEntity) = withContext(Dispatchers.IO) {
+        shortcutDao.updateShortcut(shortcut)
+    }
+
+    suspend fun deleteShortcut(shortcut: ShortcutEntity) = withContext(Dispatchers.IO) {
+        shortcutDao.deleteShortcut(shortcut)
+    }
+
+    suspend fun deleteShortcutById(id: Long) = withContext(Dispatchers.IO) {
+        shortcutDao.deleteShortcutById(id)
+    }
+
+    suspend fun resetDefaultShortcuts(defaults: List<ShortcutEntity>) = withContext(Dispatchers.IO) {
+        shortcutDao.clearAllShortcuts()
+        shortcutDao.insertAll(defaults)
+    }
 }

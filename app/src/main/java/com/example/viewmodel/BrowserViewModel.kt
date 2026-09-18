@@ -24,6 +24,7 @@ import com.example.data.local.entity.BookmarkEntity
 import com.example.data.local.entity.CookieEntity
 import com.example.data.local.entity.DownloadEntity
 import com.example.data.local.entity.HistoryEntity
+import com.example.data.local.entity.ShortcutEntity
 import com.example.data.local.entity.SitePermissionEntity
 import com.example.data.local.entity.TabEntity
 import com.example.data.local.entity.UserAccountEntity
@@ -100,8 +101,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             cookieDao = database.cookieDao(),
             userAccountDao = database.userAccountDao(),
             sitePermissionDao = database.sitePermissionDao(),
+            shortcutDao = database.shortcutDao(),
             preferences = preferences
         )
+
+        // Inicializar accesos directos por defecto si es la primera vez
+        viewModelScope.launch {
+            if (repository.getShortcutsCount() == 0) {
+                repository.insertDefaultShortcuts(getDefaultShortcuts())
+            }
+        }
 
         // Inicializar delegados
         cookieDelegate = CookieDelegate(application, repository, viewModelScope)
@@ -259,6 +268,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     // --- Marcadores e Historial ---
     val bookmarks: StateFlow<List<BookmarkEntity>> = repository.getAllBookmarks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // --- Accesos Directos Configurables (Speed Dial) ---
+    val shortcuts: StateFlow<List<ShortcutEntity>> = repository.getAllShortcuts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _isCurrentPageBookmarked = MutableStateFlow(false)
@@ -665,6 +678,65 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun deleteHistoryItem(id: Long) = viewModelScope.launch { repository.deleteHistoryEntry(id) }
     fun clearAllHistory() = viewModelScope.launch { repository.clearHistory() }
     fun onHistorySearchQueryChange(query: String) { _historySearchQuery.value = query }
+
+    // --- Gestión de Accesos Directos Configurables (Speed Dial) ---
+    fun addShortcut(title: String, url: String, iconType: String = "LANGUAGE", colorHex: String = "#00897B") {
+        viewModelScope.launch {
+            val count = repository.getShortcutsCount()
+            val formattedUrl = when {
+                url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true) -> url
+                url.contains(".") && !url.contains(" ") -> "https://$url"
+                else -> "https://$url"
+            }
+            val shortcut = ShortcutEntity(
+                title = title.trim().ifBlank { formattedUrl.substringAfter("://").substringBefore("/") },
+                url = formattedUrl.trim(),
+                iconType = iconType,
+                colorHex = colorHex,
+                orderIndex = count
+            )
+            repository.addShortcut(shortcut)
+        }
+    }
+
+    fun updateShortcut(shortcut: ShortcutEntity) {
+        viewModelScope.launch {
+            val formattedUrl = when {
+                shortcut.url.startsWith("http://", ignoreCase = true) || shortcut.url.startsWith("https://", ignoreCase = true) -> shortcut.url
+                shortcut.url.contains(".") && !shortcut.url.contains(" ") -> "https://${shortcut.url}"
+                else -> "https://${shortcut.url}"
+            }
+            repository.updateShortcut(
+                shortcut.copy(
+                    title = shortcut.title.trim().ifBlank { formattedUrl.substringAfter("://").substringBefore("/") },
+                    url = formattedUrl.trim()
+                )
+            )
+        }
+    }
+
+    fun deleteShortcut(id: Long) {
+        viewModelScope.launch {
+            repository.deleteShortcutById(id)
+        }
+    }
+
+    fun resetDefaultShortcuts() {
+        viewModelScope.launch {
+            repository.resetDefaultShortcuts(getDefaultShortcuts())
+        }
+    }
+
+    private fun getDefaultShortcuts(): List<ShortcutEntity> {
+        return listOf(
+            ShortcutEntity(title = "DuckDuckGo", url = "https://duckduckgo.com", iconType = "SEARCH", colorHex = "#DE5833", orderIndex = 0),
+            ShortcutEntity(title = "Wikipedia", url = "https://es.wikipedia.org", iconType = "LANGUAGE", colorHex = "#1E293B", orderIndex = 1),
+            ShortcutEntity(title = "GitHub", url = "https://github.com", iconType = "CODE", colorHex = "#24292E", orderIndex = 2),
+            ShortcutEntity(title = "Reddit", url = "https://www.reddit.com", iconType = "PUBLIC", colorHex = "#FF4500", orderIndex = 3),
+            ShortcutEntity(title = "YouTube", url = "https://m.youtube.com", iconType = "SPEED", colorHex = "#FF0000", orderIndex = 4),
+            ShortcutEntity(title = "Noticias", url = "https://news.google.com", iconType = "LANGUAGE", colorHex = "#1976D2", orderIndex = 5)
+        )
+    }
 
     // --- Notificaciones del Motor de Renderizado ---
     fun onPageStarted(url: String) {

@@ -29,11 +29,14 @@ import org.mozilla.geckoview.WebResponse
  * - Soporte avanzado para esquemas externos y recuperación de fallos.
  */
 class GeckoViewEngine(
-    private val context: Context,
+    context: Context,
     val geckoView: GeckoView,
     private val viewModel: BrowserViewModel,
     private var currentSession: GeckoSession
 ) : BrowserEngineContract {
+
+    // Contexto de aplicación seguro para evitar fugas de memoria de Activities
+    private val appContext: Context = context.applicationContext
 
     init {
         bindSession(currentSession)
@@ -120,13 +123,13 @@ class GeckoViewEngine(
                         parsedIntent.selector = null
 
                         // Bloquear cualquier intento de llamar a componentes del propio paquete del navegador
-                        if (parsedIntent.`package` == context.packageName) {
+                        if (parsedIntent.`package` == appContext.packageName) {
                             return GeckoResult.fromValue(AllowOrDeny.DENY)
                         }
 
-                        if (context.packageManager.resolveActivity(parsedIntent, 0) != null) {
+                        if (appContext.packageManager.resolveActivity(parsedIntent, 0) != null) {
                             parsedIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            context.startActivity(parsedIntent)
+                            appContext.startActivity(parsedIntent)
                         }
                     } catch (_: Exception) {
                         // Denegar en caso de esquema inválido o excepción
@@ -144,8 +147,8 @@ class GeckoViewEngine(
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK
                             addCategory(Intent.CATEGORY_BROWSABLE)
                         }
-                        if (context.packageManager.resolveActivity(externalIntent, 0) != null) {
-                            context.startActivity(externalIntent)
+                        if (appContext.packageManager.resolveActivity(externalIntent, 0) != null) {
+                            appContext.startActivity(externalIntent)
                         }
                     }
                 } catch (_: Exception) {
@@ -222,7 +225,7 @@ class GeckoViewEngine(
                 // Registrar el incidente de renderizado en el Crash Inspector en un hilo de fondo
                 val currentUrl = viewModel.pageState.value.url
                 viewModel.viewModelScope.launch(Dispatchers.IO) {
-                    CrashLogManager.recordGeckoCrash(context, currentUrl, isOom = false, consecutiveCrashCount)
+                    CrashLogManager.recordGeckoCrash(appContext, currentUrl, isOom = false, consecutiveCrashCount)
                 }
 
                 if (consecutiveCrashCount <= 2) {
@@ -244,7 +247,7 @@ class GeckoViewEngine(
                 // Registrar la matanza por falta de memoria (OOM) en el Crash Inspector en un hilo de fondo
                 val currentUrl = viewModel.pageState.value.url
                 viewModel.viewModelScope.launch(Dispatchers.IO) {
-                    CrashLogManager.recordGeckoCrash(context, currentUrl, isOom = true, consecutiveCrashCount)
+                    CrashLogManager.recordGeckoCrash(appContext, currentUrl, isOom = true, consecutiveCrashCount)
                 }
 
                 if (consecutiveCrashCount <= 2) {
@@ -256,7 +259,7 @@ class GeckoViewEngine(
         }
 
         // 4. Delegado de Diálogos Web: Alertas JS, confirmaciones, prompts y selector de archivos
-        session.promptDelegate = GeckoPromptHandler(context, viewModel)
+        session.promptDelegate = GeckoPromptHandler(appContext, viewModel)
 
         // 5. Delegado de Permisos: Control granular persistente por sitio y políticas de bloqueo silencioso
         session.permissionDelegate = object : GeckoSession.PermissionDelegate {
@@ -497,7 +500,7 @@ class GeckoViewEngine(
     }
 
     override fun clearCache() {
-        GeckoRuntimeProvider.clearAllData(context)
+        GeckoRuntimeProvider.clearAllData(appContext)
     }
 
     override fun evaluateJavascript(script: String, callback: ((String) -> Unit)?) {
@@ -525,9 +528,13 @@ class GeckoViewEngine(
     }
 
     /**
-     * Libera la vinculación con la vista cuando el composable sale de pantalla.
+     * Libera la vinculación con la vista cuando el composable sale de pantalla
+     * y desvincula los delegados que puedan sostener referencias en segundo plano.
      */
     fun release() {
+        try {
+            currentSession.promptDelegate = null
+        } catch (_: Throwable) {}
         geckoView.releaseSession()
     }
 }

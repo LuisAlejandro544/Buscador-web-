@@ -59,6 +59,22 @@
             </intent-filter>
         </activity>
 
+        <!-- Herramienta Independiente de Auditoría Forense de Incógnito (Privacy Auditor) con icono en el lanzador -->
+        <activity
+            android:name=".ui.debug.PrivacyAuditActivity"
+            android:exported="true"
+            android:label="@string/privacy_auditor_app_name"
+            android:icon="@drawable/ic_privacy_auditor"
+            android:roundIcon="@drawable/ic_privacy_auditor"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:theme="@style/Theme.MyApplication">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <!-- Servicio en primer plano para descargas activas resilientes con bajo consumo de memoria -->
         <service
             android:name="com.example.browser.download.DownloadForegroundService"

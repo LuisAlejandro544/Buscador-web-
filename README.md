@@ -58,6 +58,22 @@ Navegador web moderno, modular y extensible para dispositivos Android (Android 1
 - **Pantalla de Advertencia Crítica (`ThreatBlockedScreen`):** Si una página web maliciosa es detectada, se detiene la carga por completo y se despliega una pantalla de alerta carmesí que detalla la categoría del ataque, el dominio implicado, el motor de reporte y un botón de retorno seguro, permitiendo el ingreso bajo propio riesgo solo si el usuario lo autoriza explícitamente.
 - **Panel de Control Dedicado (`SecurityThreatScreen`):** Pantalla separada con interruptor maestro de protección web en tiempo real, contador acumulativo de amenazas neutralizadas, interruptores de sincronización automática y modo solo Wi-Fi, registro de última actualización y botón para comprobar y notificar en segundo plano de inmediato.
 
+### 🚀 Accesos Rápidos Configurables (Speed Dial Personalizado)
+- **Control Total para el Usuario:** En lugar de accesos directos rígidos o predeterminados estáticos, el usuario puede configurar sus propios enlaces favoritos directamente en la pantalla de inicio (`BrowserStartPage`).
+- **Persistencia en Room Database (v9):** Tabla dedicada `shortcuts` con campos para título, URL, tipo de icono semántico (`iconType`), código de color hexadecimal (`colorHex`) y orden de disposición (`orderIndex`).
+- **Creación Interactiva:** Botón `+ Añadir` con selector visual de icono (Web, Búsqueda, Multimedia, Red Social, Programación, Tienda, etc.) y selector de paleta cromática con vista previa en tiempo real.
+- **Edición y Eliminación Intuitiva:** Al mantener presionado cualquier acceso rápido, se despliega el diálogo modal de edición para modificar su nombre, URL, icono o eliminarlo de la pantalla.
+- **Restablecimiento Instantáneo:** Botón de refresco para restaurar la configuración inicial predeterminada en cualquier momento.
+
+### 🔬 Arnés Forense de Auditoría de Privacidad en Modo Incógnito (`PrivacyAuditActivity`)
+Herramienta de diagnóstico de laboratorio implementada como una **Activity independiente** (similar al inspector de crasheos `CrashInspectorActivity`), diseñada para verificar con rigor científico si el modo incógnito es 100% privado y detectar cualquier discrepancia o fuga:
+- 🗄️ **Auditoría de Base de Datos Local (Room Leak Check):** Realiza comprobaciones automáticas durante y después de sesiones privadas para certificar que `history_entries`, `cookies` y `tabs` mantengan 0 inserciones asociadas a la navegación anónima.
+- 🧠 **Auditoría de Memoria y Ciclo de Vida de GeckoView:** Inspecciona en tiempo real las instancias de `GeckoSession` para comprobar la presencia del flag `isPrivate = true`, contextos efímeros en RAM (`contextId`), la purga forzada de cachés volátiles (`storageController.clearData`) y la recolección de basura (`System.gc()`).
+- 🌐 **Monitor de Fugas de Red y DNS (Network & DoH Inspector):** Valida que el túnel de resolución DNS emplee TRR con Cloudflare/Mozilla (`TRR_MODE_FIRST`), confirma el cierre estricto de WebRTC (`media.peerconnection = false`) y detecta cualquier paquete que intente salir en texto claro o eludir HTTPS.
+- 🎭 **Inspector de Huella Digital (Fingerprint Discrepancy Test):** Realiza pruebas comparativas entre los datos de hardware del dispositivo y los expuestos al motor web para certificar que el blindaje RFP (Resist Fingerprinting) ofusque resoluciones de pantalla, fuentes, canvas y User-Agent genérico Tor/ESR.
+- 📡 **Monitor de Fugas hacia el Proveedor de Internet (ISP Query Leak Sniffer):** Monitorea la capa de red para verificar si los términos de búsqueda o URLs visitadas sufren fugas hacia los servidores DNS del proveedor de telefonía móvil (ISP) o si permanecen completamente cifradas e indescifrables.
+- 📋 **Diagnóstico Forense Crudo y Portapapeles:** En caso de fallas o discrepancias, expone el informe técnico en crudo (Raw Stack Trace, volcado de memoria y JSON estructurado) con un botón de copiado rápido al portapapeles del teléfono para depuración directa y precisa.
+
 ### 🍪 Gestor y Auditor de Cookies de Navegación
 - **Auditoría Detallada:** Visualización en tiempo real de todas las cookies almacenadas, detallando nombre, dominio de procedencia, ruta, caducidad y atributos de seguridad (`Secure`, `HttpOnly`).
 - **Detección de Rastreadores (Trackers):** Identificación automática de cookies de telemetría y publicidad de terceros con distintivo rojo y filtro rápido ("Solo rastreadores").

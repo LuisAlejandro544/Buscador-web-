@@ -11,11 +11,17 @@ import org.mozilla.geckoview.GeckoSession
  * Intercepta los diálogos emitidos por scripts web (JavaScript alert, confirm, prompt,
  * autenticación HTTP y selección de archivos en formularios HTML), convirtiéndolos en
  * eventos para ser presentados mediante diálogos nativos y accesibles de Jetpack Compose.
+ * 
+ * Nota de ciclo de vida: Se almacena exclusivamente el appContext (ApplicationContext) para
+ * evitar fugar instancias de Activity (como MainActivity) cuando las sesiones de GeckoView
+ * persisten en memoria a través de rotaciones de pantalla o cambios de pestaña.
  */
 class GeckoPromptHandler(
-    private val context: Context,
+    context: Context,
     private val viewModel: BrowserViewModel
 ) : GeckoSession.PromptDelegate {
+
+    private val appContext: Context = context.applicationContext
 
     override fun onAlertPrompt(
         session: GeckoSession,
@@ -118,9 +124,9 @@ class GeckoPromptHandler(
                 onFilesSelected = { uris ->
                     if (uris.isNotEmpty()) {
                         if (isMultiple) {
-                            result.complete(prompt.confirm(context, uris.toTypedArray()))
+                            result.complete(prompt.confirm(appContext, uris.toTypedArray()))
                         } else {
-                            result.complete(prompt.confirm(context, uris.first()))
+                            result.complete(prompt.confirm(appContext, uris.first()))
                         }
                     } else {
                         result.complete(prompt.dismiss())

@@ -44,6 +44,7 @@ fun SettingsShortcutsSection(
     onNavigateToExtensions: () -> Unit,
     onNavigateToSecurityThreats: () -> Unit,
     onNavigateToCrashInspector: () -> Unit = {},
+    onNavigateToPrivacyAuditor: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -118,6 +119,16 @@ fun SettingsShortcutsSection(
                 subtitle = "Historial de cierres, caídas GeckoView, OOM y ANR",
                 onClick = onNavigateToCrashInspector,
                 testTag = "settings_shortcut_crash_inspector"
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            ShortcutRow(
+                icon = Icons.Default.Security,
+                title = "Privacy Auditor (Laboratorio Incógnito)",
+                subtitle = "Auditoría forense de fugas de BD, memoria, DoH, huella e ISP",
+                onClick = onNavigateToPrivacyAuditor,
+                testTag = "settings_shortcut_privacy_auditor"
             )
         }
     }

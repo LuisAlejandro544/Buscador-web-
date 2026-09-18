@@ -15,6 +15,7 @@ import com.example.ui.bookmarks.BookmarksScreen
 import com.example.ui.browser.BrowserScreen
 import com.example.ui.cookies.CookiesScreen
 import com.example.ui.debug.CrashInspectorActivity
+import com.example.ui.debug.PrivacyAuditActivity
 import com.example.ui.downloads.DownloadsScreen
 import com.example.ui.extension.ExtensionsScreen
 import com.example.ui.history.HistoryScreen
@@ -144,6 +145,10 @@ fun BrowserNavGraph(
                 onNavigateToSecurityThreats = { navController.navigate(Screen.SecurityThreats.route) },
                 onNavigateToCrashInspector = {
                     val intent = Intent(context, CrashInspectorActivity::class.java)
+                    context.startActivity(intent)
+                },
+                onNavigateToPrivacyAuditor = {
+                    val intent = Intent(context, PrivacyAuditActivity::class.java)
                     context.startActivity(intent)
                 }
             )

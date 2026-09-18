@@ -100,6 +100,7 @@ fun BrowserScreen(
     val omniboxText by viewModel.omniboxText.collectAsState()
     val searchEngine by viewModel.searchEngine.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
+    val shortcuts by viewModel.shortcuts.collectAsState()
     val recentHistory by viewModel.recentHistory.collectAsState()
     val isIncognito by viewModel.isIncognitoMode.collectAsState()
     val isProtected by viewModel.isProtectedMode.collectAsState()
@@ -408,9 +409,22 @@ fun BrowserScreen(
                     searchEngine = searchEngine,
                     bookmarks = bookmarks,
                     recentHistory = recentHistory,
+                    shortcuts = shortcuts,
                     isIncognito = isIncognito,
                     isProtected = isProtected,
                     onNavigateToUrl = { url -> viewModel.loadInput(url) },
+                    onAddShortcut = { title, url, iconType, colorHex ->
+                        viewModel.addShortcut(title, url, iconType, colorHex)
+                    },
+                    onUpdateShortcut = { shortcut ->
+                        viewModel.updateShortcut(shortcut)
+                    },
+                    onDeleteShortcut = { shortcutId ->
+                        viewModel.deleteShortcut(shortcutId)
+                    },
+                    onResetDefaultShortcuts = {
+                        viewModel.resetDefaultShortcuts()
+                    },
                     modifier = Modifier.fillMaxSize()
                 )
             }

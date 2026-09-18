@@ -28,6 +28,10 @@ app/src/main/
 │   │   ├── account/
 │   │   │   ├── AccountCredentialManager.kt # Gestor de credenciales nativas AndroidX y Google ID
 │   │   │   └── WebSignInBridge.kt          # Detección de páginas de autenticación y generación de JS de acceso
+│   │   ├── debug/
+│   │   │   ├── CrashLogManager.kt          # Gestor de captura y persistencia de excepciones críticas no controladas
+│   │   │   ├── CrashReportModel.kt         # Modelo forense con especificaciones de hardware, memoria y traza de error
+│   │   │   └── PrivacyAuditEngine.kt       # Motor de pruebas forenses de privacidad, fugas de BD, red, memoria e ISP
 │   │   ├── download/
 │   │   │   ├── DownloadEngine.kt           # Motor autónomo de descargas concurrentes en streaming con pausas y reanudaciones
 │   │   │   ├── DownloadForegroundService.kt # Servicio en primer plano para transferencias en segundo plano
@@ -65,6 +69,7 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   │   │   ├── CookieDao.kt         # Acceso, filtrado por sitio y purga de cookies y rastreadores
 │   │   │   ├── DownloadDao.kt       # Acceso y control del registro de descargas
 │   │   │   ├── HistoryDao.kt        # Acceso al historial cronológico de navegación
+│   │   │   ├── ShortcutDao.kt       # Acceso y CRUD de accesos directos configurables por el usuario
 │   │   │   ├── SitePermissionDao.kt # Acceso y control de permisos otorgados o bloqueados por dominio web
 │   │   │   ├── TabDao.kt            # Acceso y persistencia de pestañas abiertas (normales y protegidas)
 │   │   │   └── UserAccountDao.kt    # Acceso, conmutación y persistencia de cuentas de usuario
@@ -73,6 +78,7 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   │   │   ├── CookieEntity.kt      # Modelo relacional para cookies (dominio, valor, expiración, isTracker)
 │   │   │   ├── DownloadEntity.kt    # Modelo relacional para descargas (estado, bytes, URI)
 │   │   │   ├── HistoryEntity.kt     # Modelo relacional para historial
+│   │   │   ├── ShortcutEntity.kt    # Modelo relacional para accesos directos configurables (título, URL, icono, color)
 │   │   │   ├── SitePermissionEntity.kt # Modelo relacional para permisos web (origen, tipo, estado y actualización)
 │   │   │   ├── TabEntity.kt         # Modelo relacional para pestañas (incluye flags isIncognito, isProtected y contextId)
 │   │   │   └── UserAccountEntity.kt # Modelo relacional para cuentas vinculadas (email, nombre, activo)
@@ -94,7 +100,8 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   │   ├── OmniboxField.kt          # Barra de direcciones inteligente (cifrado HTTPS, atajos, búsqueda)
 │   │   ├── BrowserActionMenu.kt     # Menú desplegable contextual (pestañas, modo escritorio, descargas, etc.)
 │   │   ├── BrowserBottomBar.kt      # Barra de herramientas inferior con historial, inicio y gestor de pestañas
-│   │   └── BrowserStartPage.kt      # Página de inicio rápida con marcadores, historial y accesos directos
+│   │   ├── BrowserStartPage.kt      # Página de inicio rápida con marcadores, historial y accesos directos
+│   │   └── EditShortcutDialog.kt    # Diálogo de creación, edición y personalización de accesos directos (Speed Dial)
 │   ├── components/
 │   │   ├── WebPromptDialog.kt       # Diálogos nativos Material 3 para alerts, confirms, prompts, permisos y ficheros
 │   │   └── WebSignInPromptBanner.kt # Banner flotante interactivo de acceso web con un solo toque
@@ -103,6 +110,9 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
 │   │   ├── CookieMetricsHeader.kt   # Indicadores visuales de métricas (total, rastreadores, protegidas)
 │   │   ├── CookieDetailCard.kt      # Ficha detallada individual de cookie con metadatos técnicos y borrado
 │   │   └── DomainCookieGroupCard.kt # Tarjeta colapsable agrupada por dominio con purga en lote
+│   ├── debug/
+│   │   ├── CrashInspectorActivity.kt # Activity independiente para inspección forense de fallos y stack traces
+│   │   └── PrivacyAuditActivity.kt  # Activity independiente para auditoría forense de fugas en modo incógnito
 │   ├── downloads/
 │   │   ├── DownloadsScreen.kt       # Pantalla de descargas (activas en tiempo real e historial archivado)
 │   │   ├── ActiveDownloadCard.kt    # Tarjeta de descarga activa con velocidad, progreso y controles
@@ -230,4 +240,12 @@ core-native/                         # Módulo de alto rendimiento en Rust (Edit
   - **Planificación Desatendida con Jetpack WorkManager:** `ThreatShieldUpdateScheduler` encola una tarea periódica de 24 horas (`PeriodicWorkRequestBuilder`) asociada a restricciones de hardware estrictas: dispositivo con batería no baja (`setRequiresBatteryNotLow(true)`) y tipo de red configurable (cualquiera o exclusivamente Wi-Fi vía `NetworkType.UNMETERED`).
   - **Descarga e Inyección en Tiempo de Ejecución:** `ThreatShieldUpdateWorker` consulta los repositorios mundiales de estafas y malware (PhishTank, OpenPhish, URLhaus, HaGeZi, StevenBlack) e inyecta las nuevas reglas en microsegundos dentro del motor de filtrado compilado en Rust invocando `NativeBridge.addFilterRules()`.
   - **Transparencia Total sin Fricción:** `ThreatShieldNotificationHelper` crea un canal de notificaciones dedicado de importancia baja (`IMPORTANCE_LOW`). La notificación informa al usuario exactamente cuántas firmas nuevas se añadieron y cuántos motores se sincronizaron, sin emitir sonidos molestos ni vibraciones que interrumpan la actividad del usuario en el teléfono.
+- **Arnés de Auditoría Forense de Privacidad (`PrivacyAuditActivity` y `PrivacyAuditEngine`):**
+  - **Aislamiento en Proceso Separado/Activity Independiente:** Similar al inspector de fallos (`CrashInspectorActivity`), la herramienta se implementa como una Activity independiente para no contaminar las sesiones normales ni compartir memoria volátil con la navegación cotidiana.
+  - **Módulo de Fugas en Base de Datos (Room Leak Check):** Realiza consultas concurrentes en `BrowserDatabase` (tablas `history_entries`, `cookies`, `tabs`) para corroborar que ninguna sesión privada genere registros residuales.
+  - **Módulo de Memoria y Ciclo de Vida:** Evalúa el ciclo de vida de `GeckoSession` bajo modo privado (`isPrivate = true`, `contextId`), verifica la recolección de basura con `System.gc()` y confirma la purga de cachés volátiles con `storageController.clearData(ALL_CACHES or AUTH_SESSIONS)`.
+  - **Módulo de Red y DNS (Network & DoH Inspector):** Audita la efectividad del cifrado DoH en GeckoView (`TRR_MODE_FIRST`), valida el cierre hermético de puertos STUN WebRTC (`media.peerconnection = false`) y detecta paquetes salientes en texto claro.
+  - **Módulo de Huella Digital (Fingerprint Discrepancy Test):** Realiza un escaneo de variables biométricas y de hardware reportadas por el motor web, validando que el blindaje RFP ofusque resoluciones de pantalla, fuentes, canvas y mantenga un User-Agent genérico Tor/ESR estandarizado.
+  - **Módulo de Fugas hacia el ISP (ISP Query Leak Sniffer):** Monitorea la capa de resolución de consultas de búsqueda para certificar que ningún término de búsqueda ni dominio sea transmitido en texto plano hacia los servidores DNS del proveedor de telefonía móvil u operadora de red.
+  - **Diagnóstico Forense Crudo y Portapapeles:** En caso de discrepancias o fallos, genera un volcado técnico completo (Raw Stack Trace, volcado de memoria y JSON estructurado) con un botón flotante de copiado rápido al portapapeles del teléfono para diagnóstico inmediato.
 

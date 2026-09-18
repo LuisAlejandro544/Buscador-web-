@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.example.ui.browser
 
 import androidx.compose.foundation.Image
@@ -17,22 +19,28 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +48,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -62,6 +71,7 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.local.entity.BookmarkEntity
 import com.example.data.local.entity.HistoryEntity
+import com.example.data.local.entity.ShortcutEntity
 import com.example.data.model.SearchEngine
 
 /**
@@ -85,24 +95,36 @@ fun BrowserStartPage(
     searchEngine: SearchEngine,
     bookmarks: List<BookmarkEntity>,
     recentHistory: List<HistoryEntity>,
+    shortcuts: List<ShortcutEntity> = emptyList(),
     isIncognito: Boolean,
     isProtected: Boolean = false,
     onNavigateToUrl: (String) -> Unit,
+    onAddShortcut: (title: String, url: String, iconType: String, colorHex: String) -> Unit = { _, _, _, _ -> },
+    onUpdateShortcut: (ShortcutEntity) -> Unit = {},
+    onDeleteShortcut: (Long) -> Unit = {},
+    onResetDefaultShortcuts: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var query by remember { mutableStateOf("") }
     val emeraldColor = Color(0xFF00897B)
 
-    val defaultQuickLinks = remember {
+    // Estados de diálogo para añadir y editar accesos directos
+    var isAddDialogOpen by remember { mutableStateOf(false) }
+    var shortcutToEdit by remember { mutableStateOf<ShortcutEntity?>(null) }
+
+    // Fallback de accesos por defecto si la lista de la BD aún estuviera cargando
+    val fallbackLinks = remember {
         listOf(
-            QuickAccessItem("DuckDuckGo", "https://duckduckgo.com", Icons.Default.Search, Color(0xFFDE5833)),
-            QuickAccessItem("Wikipedia", "https://es.wikipedia.org", Icons.Default.Language, Color(0xFF1E293B)),
-            QuickAccessItem("GitHub", "https://github.com", Icons.Default.Language, Color(0xFF24292E)),
-            QuickAccessItem("Reddit", "https://www.reddit.com", Icons.Default.Language, Color(0xFFFF4500)),
-            QuickAccessItem("YouTube", "https://m.youtube.com", Icons.Default.Speed, Color(0xFFFF0000)),
-            QuickAccessItem("Noticias", "https://news.google.com", Icons.Default.Language, Color(0xFF1976D2))
+            ShortcutEntity(id = -1, title = "DuckDuckGo", url = "https://duckduckgo.com", iconType = "SEARCH", colorHex = "#DE5833", orderIndex = 0),
+            ShortcutEntity(id = -2, title = "Wikipedia", url = "https://es.wikipedia.org", iconType = "LANGUAGE", colorHex = "#1E293B", orderIndex = 1),
+            ShortcutEntity(id = -3, title = "GitHub", url = "https://github.com", iconType = "CODE", colorHex = "#24292E", orderIndex = 2),
+            ShortcutEntity(id = -4, title = "Reddit", url = "https://www.reddit.com", iconType = "PUBLIC", colorHex = "#FF4500", orderIndex = 3),
+            ShortcutEntity(id = -5, title = "YouTube", url = "https://m.youtube.com", iconType = "SPEED", colorHex = "#FF0000", orderIndex = 4),
+            ShortcutEntity(id = -6, title = "Noticias", url = "https://news.google.com", iconType = "LANGUAGE", colorHex = "#1976D2", orderIndex = 5)
         )
     }
+
+    val displayShortcuts = if (shortcuts.isNotEmpty()) shortcuts else fallbackLinks
 
     LazyColumn(
         modifier = modifier
@@ -288,34 +310,100 @@ fun BrowserStartPage(
             )
         }
 
-        // Accesos directos (Speed Dial)
+        // Accesos directos configurables (Speed Dial)
         item {
             Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Accesos Rápidos",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Fila de accesos directos
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    defaultQuickLinks.take(4).forEach { item ->
-                        QuickAccessButton(item = item, onClick = { onNavigateToUrl(item.url) })
+                    Column {
+                        Text(
+                            text = "Accesos Rápidos",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = "Toca para abrir • Mantén presionado para editar",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Botón para restablecer los accesos predeterminados si el usuario lo desea
+                        IconButton(
+                            onClick = onResetDefaultShortcuts,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("reset_shortcuts_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Restablecer accesos predeterminados",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        // Botón para añadir un nuevo acceso directo
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier
+                                .clickable { isAddDialogOpen = true }
+                                .testTag("add_shortcut_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Agregar acceso rápido",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Añadir",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    defaultQuickLinks.drop(4).forEach { item ->
-                        QuickAccessButton(item = item, onClick = { onNavigateToUrl(item.url) })
+                // Cuadrícula dinámica de accesos rápidos (filas de 4 elementos)
+                val chunkedShortcuts = displayShortcuts.chunked(4)
+                chunkedShortcuts.forEachIndexed { rowIndex, rowShortcuts ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start)
+                    ) {
+                        rowShortcuts.forEach { item ->
+                            Box(modifier = Modifier.weight(1f)) {
+                                ConfigurableQuickAccessButton(
+                                    item = item,
+                                    onClick = { onNavigateToUrl(item.url) },
+                                    onLongClick = { shortcutToEdit = item }
+                                )
+                            }
+                        }
+                        // Rellenar espacios vacíos en la última fila para mantener el espaciado simétrico
+                        val emptySlots = 4 - rowShortcuts.size
+                        repeat(emptySlots) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                    if (rowIndex < chunkedShortcuts.size - 1) {
+                        Spacer(modifier = Modifier.height(14.dp))
                     }
                 }
             }
@@ -458,6 +546,94 @@ fun BrowserStartPage(
                 }
             }
         }
+    }
+
+    // Diálogo para Añadir nuevo acceso directo
+    if (isAddDialogOpen) {
+        EditShortcutDialog(
+            initialShortcut = null,
+            onDismissRequest = { isAddDialogOpen = false },
+            onSave = { title, url, iconType, colorHex ->
+                onAddShortcut(title, url, iconType, colorHex)
+                isAddDialogOpen = false
+            }
+        )
+    }
+
+    // Diálogo para Editar o Eliminar acceso directo seleccionado
+    shortcutToEdit?.let { shortcut ->
+        EditShortcutDialog(
+            initialShortcut = shortcut,
+            onDismissRequest = { shortcutToEdit = null },
+            onSave = { title, url, iconType, colorHex ->
+                onUpdateShortcut(
+                    shortcut.copy(
+                        title = title,
+                        url = url,
+                        iconType = iconType,
+                        colorHex = colorHex
+                    )
+                )
+                shortcutToEdit = null
+            },
+            onDelete = {
+                onDeleteShortcut(shortcut.id)
+                shortcutToEdit = null
+            }
+        )
+    }
+}
+
+/**
+ * Botón circular interactivo para accesos rápidos configurables por el usuario.
+ * Admite clic simple para navegar y clic prolongado (long click) para editar o borrar.
+ */
+@Composable
+private fun ConfigurableQuickAccessButton(
+    item: ShortcutEntity,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val buttonColor = remember(item.colorHex) {
+        ShortcutDesignSystem.parseColor(item.colorHex)
+    }
+    val iconVector = remember(item.iconType) {
+        ShortcutDesignSystem.getIconForType(item.iconType)
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .padding(vertical = 4.dp)
+            .testTag("quick_link_${item.title}")
+    ) {
+        Box(
+            modifier = Modifier
+                .size(54.dp)
+                .clip(CircleShape)
+                .background(buttonColor.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = iconVector,
+                contentDescription = item.title,
+                tint = buttonColor,
+                modifier = Modifier.size(26.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = item.title,
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

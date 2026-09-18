@@ -4,11 +4,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -55,7 +55,6 @@ import com.example.data.local.entity.CookieEntity
  * Muestra el nombre, dominio, valor técnico, categoría funcional/rastreador,
  * atributos de seguridad (HttpOnly, Secure, Aislada en burbuja) y acción de borrado.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CookieDetailCard(
     cookie: CookieEntity,
@@ -143,10 +142,12 @@ fun CookieDetailCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Etiquetas e insignias
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+            // Etiquetas e insignias con scroll horizontal para soporte total y evitar fallos binarios
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (cookie.isTracker) {
                     CookieTag(
